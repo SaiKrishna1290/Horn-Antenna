@@ -1,0 +1,29 @@
+% Create a rectangular horn antenna object
+myHorn = horn;
+
+% Optional: Manually set dimensions (in meters)
+% Flare Width, Flare Height, and Length
+myHorn.FlareWidth = 0.1; 
+myHorn.FlareHeight = 7;
+myHorn.Length = 15;
+figure;
+show(myHorn);
+title('Aperture Horn Antenna Geometry');
+% Plot the 3D radiation pattern at 10 GHz
+figure;
+pattern(myHorn, 10e9);
+title('3D Radiation Pattern at 10 GHz');
+% Define frequency range for analysis (8 GHz to 12 GHz)
+freqRange = linspace(8e9, 12e9, 75);
+
+figure;
+s = sparameters(myHorn, freqRange);
+rfplot(s);
+grid on;
+title('S11 (Return Loss) vs Frequency');
+% Example: Using the horn as a feed for a dish
+myDish = reflector;
+myDish.Exciter = myHorn; % Set the horn as the feed
+myDish.GroundPlaneRadius = 0.5;
+figure;
+show(myDish);
