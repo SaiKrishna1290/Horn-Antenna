@@ -1,4 +1,5 @@
-% Create a rectangular horn antenna object
+% Create a rectangular horn antenna object in MATLAB
+
 myHorn = horn;
 
 % Optional: Manually set dimensions (in meters)
