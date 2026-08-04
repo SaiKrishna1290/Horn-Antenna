@@ -50,3 +50,13 @@ myDish.GroundPlaneRadius = 0.5;
 % Display reflector antenna
 figure;
 show(myDish);
+
+ S11 / Reflection Coefficient
+
+S11 tells us how much of the incident signal is reflected at the antennainput.
+
+S11(dB) = 20 log₁₀|Γ|
+
+A more negative S11 generally means better matching.
+
+   S11 Approximate Interpretation
