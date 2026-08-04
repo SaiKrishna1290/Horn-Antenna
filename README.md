@@ -52,11 +52,25 @@ figure;
 show(myDish);
 
  S11 / Reflection Coefficient
-
 S11 tells us how much of the incident signal is reflected at the antennainput.
-
 S11(dB) = 20 log₁₀|Γ|
-
 A more negative S11 generally means better matching.
+ S11 Approximate Interpretation
 
-   S11 Approximate Interpretation
+ Return Loss
+
+Return loss is conventionally:
+
+RL = -20 log₁₀|Γ|
+
+Therefore, if:
+
+S11 = -10 dB
+
+then:
+
+Return Loss = +10 dB
+
+Although S11 and return loss are often casually used interchangeably inantenna plots, the sign convention is technically different.
+
+   
