@@ -1,30 +1,111 @@
-% Create a rectangular horn antenna object in MATLAB
+%% ==========================================================
+%  RECTANGULAR HORN ANTENNA DESIGN AND ANALYSIS
+%  MATLAB Antenna Toolbox
+% ===========================================================
 
+clc;
+clear;
+close all;
+
+%% Constants
+c = physconst('LightSpeed');     % Speed of light (m/s)
+f0 = 10e9;                       % Operating frequency (10 GHz)
+lambda = c/f0;
+
+fprintf('=====================================\n');
+fprintf('Rectangular Horn Antenna Simulation\n');
+fprintf('=====================================\n');
+fprintf('Operating Frequency : %.2f GHz\n',f0/1e9);
+fprintf('Wavelength          : %.2f mm\n\n',lambda*1000);
+
+%% Create Rectangular Horn Antenna
 myHorn = horn;
 
-% Optional: Manually set dimensions (in meters)
-% Flare Width, Flare Height, and Length
-myHorn.FlareWidth = 0.1; 
-myHorn.FlareHeight = 7;
-myHorn.Length = 15;
+% -----------------------------------------------------------
+% Dimensions (Recommended for 10 GHz)
+% -----------------------------------------------------------
+myHorn.FlareWidth  = 0.10;    % 10 cm
+myHorn.FlareHeight = 0.07;    % 7 cm
+myHorn.Length      = 0.15;    % 15 cm
+
+%% Display Horn Geometry
 figure;
 show(myHorn);
-title('Aperture Horn Antenna Geometry');
-% Plot the 3D radiation pattern at 10 GHz
+title('Rectangular Horn Antenna Geometry');
+
+%% Radiation Pattern
 figure;
-pattern(myHorn, 10e9);
+pattern(myHorn,f0);
 title('3D Radiation Pattern at 10 GHz');
-% Define frequency range for analysis (8 GHz to 12 GHz)
-freqRange = linspace(8e9, 12e9, 75);
+
+%% Frequency Sweep
+freqRange = linspace(8e9,12e9,75);
+
+%% Calculate S-Parameters
+S = sparameters(myHorn,freqRange);
+
+%% Plot S11
+figure;
+rfplot(S,1,1);
+grid on;
+title('S_{11} (Return Loss) vs Frequency');
+
+%% Extract S11 Data
+S11 = squeeze(S.Parameters(1,1,:));
+S11dB = 20*log10(abs(S11));
+
+[minS11,index] = min(S11dB);
+bestFreq = freqRange(index);
+
+fprintf('Minimum S11 : %.2f dB\n',minS11);
+fprintf('Frequency   : %.3f GHz\n\n',bestFreq/1e9);
+
+%% Custom S11 Plot
+figure;
+plot(freqRange/1e9,S11dB,'LineWidth',2);
+hold on;
+yline(-10,'r--','-10 dB Target');
+grid on;
+
+xlabel('Frequency (GHz)');
+ylabel('S_{11} (dB)');
+title('Horn Antenna S_{11}');
+legend('S_{11}','-10 dB Target','Location','best');
+
+%% VSWR Calculation
+Gamma = abs(S11);
+VSWR = (1+Gamma)./(1-Gamma);
 
 figure;
-s = sparameters(myHorn, freqRange);
-rfplot(s);
+plot(freqRange/1e9,VSWR,'LineWidth',2);
 grid on;
-title('S11 (Return Loss) vs Frequency');
-% Example: Using the horn as a feed for a dish
+xlabel('Frequency (GHz)');
+ylabel('VSWR');
+title('VSWR vs Frequency');
+
+%% Impedance Plot
+figure;
+impedance(myHorn,freqRange);
+title('Input Impedance');
+
+%% Current Distribution
+figure;
+current(myHorn,f0);
+title('Current Distribution at 10 GHz');
+
+%% Reflector Antenna
 myDish = reflector;
-myDish.Exciter = myHorn; % Set the horn as the feed
+
+myDish.Exciter = myHorn;
 myDish.GroundPlaneRadius = 0.5;
+
 figure;
 show(myDish);
+title('Horn-Fed Reflector Antenna');
+
+%% Radiation Pattern of Reflector
+figure;
+pattern(myDish,f0);
+title('Reflector Antenna Radiation Pattern');
+
+fprintf('Simulation Completed Successfully.\n');
