@@ -243,3 +243,11 @@ title('Gain vs Frequency');
 
 saveas(gcf,...
 fullfile(outputFolder,'Gain.png'));
+figure('Name','Smith Chart');
+
+smithplot(S,1,1);
+
+title('Horn Antenna Smith Chart');
+
+saveas(gcf,...
+fullfile(outputFolder,'SmithChart.png'));
