@@ -218,3 +218,28 @@ title('Directivity vs Frequency');
 
 saveas(gcf,...
 fullfile(outputFolder,'Directivity.png'));
+Gain=zeros(length(freqRange),1);
+
+for k=1:length(freqRange)
+
+    Gain(k)=pattern(myHorn,...
+        freqRange(k),0,90,...
+        'Type','gain');
+
+end
+
+figure;
+
+plot(freqRange/1e9,...
+    Gain,...
+    'LineWidth',2);
+
+grid on;
+
+xlabel('Frequency (GHz)');
+ylabel('Gain (dBi)');
+
+title('Gain vs Frequency');
+
+saveas(gcf,...
+fullfile(outputFolder,'Gain.png'));
