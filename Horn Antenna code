@@ -192,3 +192,29 @@ executionTime=toc;
 fprintf('Execution Time : %.2f seconds\n',executionTime);
 
 fprintf('\nSimulation Completed Successfully.\n');
+Directivity=zeros(length(freqRange),1);
+
+for k=1:length(freqRange)
+
+    Directivity(k)=pattern(myHorn,...
+        freqRange(k),...
+        0,90,...
+        'Type','directivity');
+
+end
+
+figure;
+
+plot(freqRange/1e9,...
+    Directivity,...
+    'LineWidth',2);
+
+grid on;
+
+xlabel('Frequency (GHz)');
+ylabel('Directivity (dBi)');
+
+title('Directivity vs Frequency');
+
+saveas(gcf,...
+fullfile(outputFolder,'Directivity.png'));
