@@ -262,3 +262,6 @@ title('H Plane Radiation Pattern');
 
 saveas(gcf,...
 fullfile(outputFolder,'HPlane.png'));
+BW=beamwidth(myHorn,f0);
+
+fprintf('\nBeamwidth = %.2f Degrees\n',BW);
