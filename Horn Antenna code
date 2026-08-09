@@ -275,3 +275,4 @@ fprintf('Front Back Ratio = %.2f dB\n',FBR);
 efficiencyValue=efficiency(myHorn,f0);
 
 fprintf('Radiation Efficiency = %.3f\n',efficiencyValue);
+disp(myHorn);
