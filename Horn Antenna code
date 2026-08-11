@@ -1,1083 +1,541 @@
-%% =========================================================================
-%                 RECTANGULAR HORN ANTENNA
-%              COMPLETE DESIGN & ANALYSIS SUITE
-%
-% MATLAB Antenna Toolbox
-%
-% Author      : Sai Krishna
-% Project     : Rectangular Horn Antenna Analysis
-% Frequency   : 10 GHz
-% Analysis    : 8 - 12 GHz
-%
-% FEATURES
-% -------------------------------------------------------------------------
-% 1. Antenna geometry
-% 2. Dimension validation
-% 3. Wavelength calculation
-% 4. 3D radiation pattern
-% 5. E-plane / H-plane analysis
-% 6. S-parameters
-% 7. S11 / return loss
-% 8. VSWR
-% 9. Smith chart
-% 10. Input impedance
-% 11. Gain
-% 12. Directivity
-% 13. Efficiency
-% 14. Multi-frequency radiation comparison
-% 15. Surface current
-% 16. Reflector antenna
-% 17. Horn vs reflector comparison
-% 18. Parameter sweep
-% 19. Automatic result scoring
-% 20. CSV export
-% 21. Automatic report generation
-% 22. Automatic figure export
-%
-% =========================================================================
-
-clc;
-clear;
-close all;
-
-%% =========================================================================
-% 1. START TIMER
-% =========================================================================
-
-totalTimer = tic;
+%% ========================================================================
+% 41. MULTI-PARAMETER HORN OPTIMIZATION
+% ========================================================================
 
 fprintf('\n');
 fprintf('=====================================================================\n');
-fprintf('              RECTANGULAR HORN ANTENNA ANALYSIS\n');
+fprintf('                 MULTI-PARAMETER OPTIMIZATION\n');
 fprintf('=====================================================================\n');
 
-%% =========================================================================
-% 2. CREATE RESULT DIRECTORY
-% =========================================================================
+%% Design variable ranges
 
-resultFolder = 'Horn_Antenna_Complete_Results';
+widthValues = ...
+    [0.08 0.09 0.10 0.11 0.12];
 
-if ~exist(resultFolder,'dir')
-    mkdir(resultFolder);
-end
-
-fprintf('\nResult folder:\n%s\n',resultFolder);
-
-%% =========================================================================
-% 3. GLOBAL PARAMETERS
-% =========================================================================
-
-c = physconst('LightSpeed');
-
-f0 = 10e9;
-
-freqStart = 8e9;
-freqStop  = 12e9;
-
-numFreqPoints = 75;
-
-freqRange = linspace( ...
-    freqStart, ...
-    freqStop, ...
-    numFreqPoints);
-
-lambda0 = c/f0;
-
-%% =========================================================================
-% 4. DESIGN PARAMETERS
-% =========================================================================
-
-flareWidth  = 0.10;
-flareHeight = 0.07;
-hornLength  = 0.15;
-
-%% =========================================================================
-% 5. DISPLAY BASIC PARAMETERS
-% =========================================================================
-
-fprintf('\n');
-fprintf('---------------------------------------------------------------------\n');
-fprintf('SYSTEM PARAMETERS\n');
-fprintf('---------------------------------------------------------------------\n');
-
-fprintf('Operating Frequency : %.3f GHz\n',f0/1e9);
-
-fprintf('Frequency Range     : %.3f - %.3f GHz\n', ...
-    freqStart/1e9, ...
-    freqStop/1e9);
-
-fprintf('Frequency Samples   : %d\n',numFreqPoints);
-
-fprintf('Wavelength          : %.3f mm\n',lambda0*1000);
-
-fprintf('\nHorn Dimensions\n');
-
-fprintf('Flare Width         : %.2f cm\n', ...
-    flareWidth*100);
-
-fprintf('Flare Height        : %.2f cm\n', ...
-    flareHeight*100);
-
-fprintf('Horn Length         : %.2f cm\n', ...
-    hornLength*100);
-
-%% =========================================================================
-% 6. DIMENSION VALIDATION
-% =========================================================================
-
-fprintf('\n');
-fprintf('---------------------------------------------------------------------\n');
-fprintf('DIMENSION VALIDATION\n');
-fprintf('---------------------------------------------------------------------\n');
-
-dimensionRatioWidth  = flareWidth/lambda0;
-dimensionRatioHeight = flareHeight/lambda0;
-dimensionRatioLength = hornLength/lambda0;
-
-fprintf('Width / Lambda  : %.2f\n',dimensionRatioWidth);
-fprintf('Height / Lambda : %.2f\n',dimensionRatioHeight);
-fprintf('Length / Lambda : %.2f\n',dimensionRatioLength);
-
-if flareWidth <= 0 || flareHeight <= 0 || hornLength <= 0
-
-    error('All antenna dimensions must be greater than zero.');
-
-end
-
-if flareWidth > 1 || flareHeight > 1 || hornLength > 1
-
-    warning('One or more dimensions are greater than 1 meter.');
-
-end
-
-if dimensionRatioLength > 100
-
-    warning('Horn length is extremely large compared with wavelength.');
-
-end
-
-%% =========================================================================
-% 7. CREATE HORN ANTENNA
-% =========================================================================
-
-fprintf('\nCreating horn antenna...\n');
-
-myHorn = horn;
-
-myHorn.FlareWidth  = flareWidth;
-myHorn.FlareHeight = flareHeight;
-myHorn.Length      = hornLength;
-
-fprintf('Horn created successfully.\n');
-
-%% =========================================================================
-% 8. DISPLAY ANTENNA OBJECT
-% =========================================================================
-
-fprintf('\n');
-disp(myHorn);
-
-%% =========================================================================
-% 9. HORN GEOMETRY
-% =========================================================================
-
-figure( ...
-    'Name','01 - Horn Geometry', ...
-    'NumberTitle','off');
-
-show(myHorn);
-
-title('Rectangular Horn Antenna Geometry');
-
-grid on;
-
-saveas( ...
-    gcf, ...
-    fullfile(resultFolder,'01_Horn_Geometry.png'));
-
-%% =========================================================================
-% 10. 3D RADIATION PATTERN AT 10 GHz
-% =========================================================================
-
-fprintf('\nCalculating 3D radiation pattern...\n');
-
-figure( ...
-    'Name','02 - 3D Radiation Pattern', ...
-    'NumberTitle','off');
-
-pattern(myHorn,f0);
-
-title('3D Radiation Pattern at 10 GHz');
-
-saveas( ...
-    gcf, ...
-    fullfile(resultFolder,'02_3D_Radiation_Pattern.png'));
-
-%% =========================================================================
-% 11. E-PLANE
-% =========================================================================
-
-fprintf('Calculating E-plane pattern...\n');
-
-figure( ...
-    'Name','03 - E Plane', ...
-    'NumberTitle','off');
-
-patternElevation(myHorn,f0);
-
-title('E-Plane Radiation Pattern');
-
-saveas( ...
-    gcf, ...
-    fullfile(resultFolder,'03_E_Plane.png'));
-
-%% =========================================================================
-% 12. H-PLANE
-% =========================================================================
-
-fprintf('Calculating H-plane pattern...\n');
-
-figure( ...
-    'Name','04 - H Plane', ...
-    'NumberTitle','off');
-
-patternAzimuth(myHorn,f0);
-
-title('H-Plane Radiation Pattern');
-
-saveas( ...
-    gcf, ...
-    fullfile(resultFolder,'04_H_Plane.png'));
-
-%% =========================================================================
-% 13. S-PARAMETERS
-% =========================================================================
-
-fprintf('\nCalculating S-parameters...\n');
-
-try
-
-    S = sparameters( ...
-        myHorn, ...
-        freqRange);
-
-catch ME
-
-    fprintf('\nS-parameter calculation failed:\n');
-    fprintf('%s\n',ME.message);
-
-    error('Unable to calculate S-parameters.');
-
-end
-
-%% =========================================================================
-% 14. EXTRACT S11
-% =========================================================================
-
-S11 = squeeze( ...
-    S.Parameters(1,1,:));
-
-S11Magnitude = abs(S11);
-
-S11dB = 20*log10( ...
-    S11Magnitude);
-
-%% =========================================================================
-% 15. FIND BEST MATCH
-% =========================================================================
-
-[minS11,indexBest] = min(S11dB);
-
-bestMatchFrequency = ...
-    freqRange(indexBest);
-
-%% =========================================================================
-% 16. RETURN LOSS
-% =========================================================================
-
-returnLoss = -S11dB;
-
-%% =========================================================================
-% 17. VSWR
-% =========================================================================
-
-VSWR = ...
-    (1 + S11Magnitude) ./ ...
-    (1 - S11Magnitude);
-
-[minVSWR,indexVSWR] = min(VSWR);
-
-bestVSWRFrequency = ...
-    freqRange(indexVSWR);
-
-%% =========================================================================
-% 18. S11 PLOT
-% =========================================================================
-
-figure( ...
-    'Name','05 - S11', ...
-    'NumberTitle','off');
-
-plot( ...
-    freqRange/1e9, ...
-    S11dB, ...
-    'LineWidth',2);
-
-hold on;
-
-yline( ...
-    -10, ...
-    '--', ...
-    '-10 dB Target');
-
-plot( ...
-    bestMatchFrequency/1e9, ...
-    minS11, ...
-    'o', ...
-    'MarkerSize',8, ...
-    'MarkerFaceColor','r');
-
-grid on;
-
-xlabel('Frequency (GHz)');
-ylabel('S_{11} (dB)');
-
-title('S_{11} vs Frequency');
-
-legend( ...
-    'S_{11}', ...
-    '-10 dB Target', ...
-    'Best Match', ...
-    'Location','best');
-
-saveas( ...
-    gcf, ...
-    fullfile(resultFolder,'05_S11.png'));
-
-%% =========================================================================
-% 19. RETURN LOSS PLOT
-% =========================================================================
-
-figure( ...
-    'Name','06 - Return Loss', ...
-    'NumberTitle','off');
-
-plot( ...
-    freqRange/1e9, ...
-    returnLoss, ...
-    'LineWidth',2);
-
-grid on;
-
-xlabel('Frequency (GHz)');
-ylabel('Return Loss (dB)');
-
-title('Return Loss vs Frequency');
-
-saveas( ...
-    gcf, ...
-    fullfile(resultFolder,'06_Return_Loss.png'));
-
-%% =========================================================================
-% 20. VSWR PLOT
-% =========================================================================
-
-figure( ...
-    'Name','07 - VSWR', ...
-    'NumberTitle','off');
-
-plot( ...
-    freqRange/1e9, ...
-    VSWR, ...
-    'LineWidth',2);
-
-hold on;
-
-yline( ...
-    2, ...
-    '--', ...
-    'VSWR = 2');
-
-grid on;
-
-xlabel('Frequency (GHz)');
-ylabel('VSWR');
-
-title('VSWR vs Frequency');
-
-saveas( ...
-    gcf, ...
-    fullfile(resultFolder,'07_VSWR.png'));
-
-%% =========================================================================
-% 21. SMITH CHART
-% =========================================================================
-
-fprintf('Generating Smith chart...\n');
-
-figure( ...
-    'Name','08 - Smith Chart', ...
-    'NumberTitle','off');
-
-smithplot(S,1,1);
-
-title('Horn Antenna Smith Chart');
-
-saveas( ...
-    gcf, ...
-    fullfile(resultFolder,'08_Smith_Chart.png'));
-
-%% =========================================================================
-% 22. INPUT IMPEDANCE
-% =========================================================================
-
-fprintf('Calculating input impedance...\n');
-
-figure( ...
-    'Name','09 - Input Impedance', ...
-    'NumberTitle','off');
-
-impedance( ...
-    myHorn, ...
-    freqRange);
-
-title('Horn Antenna Input Impedance');
-
-saveas( ...
-    gcf, ...
-    fullfile(resultFolder,'09_Input_Impedance.png'));
-
-%% =========================================================================
-% 23. CURRENT DISTRIBUTION
-% =========================================================================
-
-fprintf('Calculating surface current...\n');
-
-figure( ...
-    'Name','10 - Surface Current', ...
-    'NumberTitle','off');
-
-current( ...
-    myHorn, ...
-    f0);
-
-title('Surface Current at 10 GHz');
-
-saveas( ...
-    gcf, ...
-    fullfile(resultFolder,'10_Surface_Current.png'));
-
-%% =========================================================================
-% 24. MULTI-FREQUENCY RADIATION ANALYSIS
-% =========================================================================
-
-analysisFrequencies = [8e9 9e9 10e9 11e9 12e9];
-
-fprintf('\n');
-fprintf('---------------------------------------------------------------------\n');
-fprintf('MULTI-FREQUENCY RADIATION ANALYSIS\n');
-fprintf('---------------------------------------------------------------------\n');
-
-for k = 1:length(analysisFrequencies)
-
-    currentFrequency = ...
-        analysisFrequencies(k);
-
-    fprintf( ...
-        'Generating pattern at %.1f GHz...\n', ...
-        currentFrequency/1e9);
-
-    figure( ...
-        'Name',sprintf( ...
-        'Pattern %.1f GHz', ...
-        currentFrequency/1e9), ...
-        'NumberTitle','off');
-
-    pattern( ...
-        myHorn, ...
-        currentFrequency);
-
-    title(sprintf( ...
-        '3D Radiation Pattern at %.1f GHz', ...
-        currentFrequency/1e9));
-
-    filename = sprintf( ...
-        '11_Pattern_%gGHz.png', ...
-        currentFrequency/1e9);
-
-    saveas( ...
-        gcf, ...
-        fullfile(resultFolder,filename));
-
-end
-
-%% =========================================================================
-% 25. GAIN AT OPERATING FREQUENCY
-% =========================================================================
-
-fprintf('\nCalculating gain...\n');
-
-try
-
-    gainAt10GHz = pattern( ...
-        myHorn, ...
-        f0, ...
-        0, ...
-        0, ...
-        'Type','gain');
-
-catch
-
-    gainAt10GHz = NaN;
-
-end
-
-%% =========================================================================
-% 26. DIRECTIVITY AT OPERATING FREQUENCY
-% =========================================================================
-
-fprintf('Calculating directivity...\n');
-
-try
-
-    directivityAt10GHz = pattern( ...
-        myHorn, ...
-        f0, ...
-        0, ...
-        0, ...
-        'Type','directivity');
-
-catch
-
-    directivityAt10GHz = NaN;
-
-end
-
-%% =========================================================================
-% 27. EFFICIENCY
-% =========================================================================
-
-fprintf('Calculating efficiency...\n');
-
-try
-
-    efficiencyAt10GHz = ...
-        efficiency(myHorn,f0);
-
-catch
-
-    efficiencyAt10GHz = NaN;
-
-end
-
-%% =========================================================================
-% 28. REFLECTOR ANTENNA
-% =========================================================================
-
-fprintf('\nCreating reflector antenna...\n');
-
-myDish = reflector;
-
-myDish.Exciter = myHorn;
-
-myDish.GroundPlaneRadius = 0.5;
-
-%% =========================================================================
-% 29. REFLECTOR GEOMETRY
-% =========================================================================
-
-figure( ...
-    'Name','Reflector Geometry', ...
-    'NumberTitle','off');
-
-show(myDish);
-
-title('Horn-Fed Reflector Antenna');
-
-saveas( ...
-    gcf, ...
-    fullfile(resultFolder, ...
-    '20_Reflector_Geometry.png'));
-
-%% =========================================================================
-% 30. REFLECTOR PATTERN
-% =========================================================================
-
-fprintf('Calculating reflector radiation pattern...\n');
-
-figure( ...
-    'Name','Reflector Pattern', ...
-    'NumberTitle','off');
-
-pattern( ...
-    myDish, ...
-    f0);
-
-title('Horn-Fed Reflector Radiation Pattern');
-
-saveas( ...
-    gcf, ...
-    fullfile(resultFolder, ...
-    '21_Reflector_Pattern.png'));
-
-%% =========================================================================
-% 31. -10 dB BANDWIDTH
-% =========================================================================
-
-matching = S11dB <= -10;
-
-if any(matching)
-
-    validFrequency = ...
-        freqRange(matching);
-
-    lower10dB = ...
-        min(validFrequency);
-
-    upper10dB = ...
-        max(validFrequency);
-
-    bandwidth10dB = ...
-        upper10dB - lower10dB;
-
-    center10dB = ...
-        (upper10dB + lower10dB)/2;
-
-    fractionalBandwidth = ...
-        bandwidth10dB / center10dB * 100;
-
-else
-
-    lower10dB = NaN;
-    upper10dB = NaN;
-    bandwidth10dB = NaN;
-    fractionalBandwidth = NaN;
-
-end
-
-%% =========================================================================
-% 32. PARAMETER SWEEP
-% =========================================================================
-
-fprintf('\n');
-fprintf('---------------------------------------------------------------------\n');
-fprintf('PARAMETER SWEEP\n');
-fprintf('---------------------------------------------------------------------\n');
-
-fprintf('Testing different horn lengths...\n');
+heightValues = ...
+    [0.05 0.06 0.07 0.08 0.09];
 
 lengthValues = ...
     [0.10 0.12 0.15 0.18 0.20];
 
-parameterS11 = ...
-    zeros(size(lengthValues));
+totalDesigns = ...
+    length(widthValues) * ...
+    length(heightValues) * ...
+    length(lengthValues);
 
-for k = 1:length(lengthValues)
+fprintf('\nTotal designs to evaluate: %d\n',totalDesigns);
 
-    testHorn = horn;
+%% Storage
 
-    testHorn.FlareWidth = ...
-        flareWidth;
+optimizationData = [];
 
-    testHorn.FlareHeight = ...
-        flareHeight;
+designCounter = 0;
 
-    testHorn.Length = ...
-        lengthValues(k);
+%% Optimization loop
 
-    fprintf( ...
-        'Testing length = %.2f cm\n', ...
-        lengthValues(k)*100);
+for w = 1:length(widthValues)
 
-    try
+    for h = 1:length(heightValues)
 
-        tempS = ...
-            sparameters( ...
-            testHorn, ...
-            f0);
+        for l = 1:length(lengthValues)
 
-        tempS11 = ...
-            squeeze(tempS.Parameters(1,1));
+            designCounter = designCounter + 1;
 
-        parameterS11(k) = ...
-            20*log10(abs(tempS11));
+            testWidth = widthValues(w);
+            testHeight = heightValues(h);
+            testLength = lengthValues(l);
 
-    catch
+            fprintf( ...
+                '\nDesign %d / %d\n', ...
+                designCounter,totalDesigns);
 
-        parameterS11(k) = NaN;
+            fprintf( ...
+                'Width = %.2f cm | Height = %.2f cm | Length = %.2f cm\n', ...
+                testWidth*100, ...
+                testHeight*100, ...
+                testLength*100);
+
+            %% Create test antenna
+
+            testHorn = horn;
+
+            testHorn.FlareWidth = testWidth;
+            testHorn.FlareHeight = testHeight;
+            testHorn.Length = testLength;
+
+            %% S11 at target frequency
+
+            try
+
+                tempS = ...
+                    sparameters(testHorn,f0);
+
+                tempS11 = ...
+                    squeeze(tempS.Parameters(1,1));
+
+                tempS11dB = ...
+                    20*log10(abs(tempS11));
+
+            catch
+
+                tempS11dB = NaN;
+
+            end
+
+            %% Directivity
+
+            try
+
+                tempDirectivity = ...
+                    pattern( ...
+                    testHorn, ...
+                    f0, ...
+                    0, ...
+                    0, ...
+                    'Type','directivity');
+
+            catch
+
+                tempDirectivity = NaN;
+
+            end
+
+            %% Gain
+
+            try
+
+                tempGain = ...
+                    pattern( ...
+                    testHorn, ...
+                    f0, ...
+                    0, ...
+                    0, ...
+                    'Type','gain');
+
+            catch
+
+                tempGain = NaN;
+
+            end
+
+            %% VSWR
+
+            if ~isnan(tempS11dB)
+
+                gammaTemp = ...
+                    10^(tempS11dB/20);
+
+                tempVSWR = ...
+                    (1+gammaTemp)/(1-gammaTemp);
+
+            else
+
+                tempVSWR = NaN;
+
+            end
+
+            %% Design score
+
+            tempScore = 0;
+
+            % S11 score
+            if ~isnan(tempS11dB)
+
+                if tempS11dB <= -15
+
+                    tempScore = tempScore + 40;
+
+                elseif tempS11dB <= -10
+
+                    tempScore = tempScore + 35;
+
+                elseif tempS11dB <= -6
+
+                    tempScore = tempScore + 25;
+
+                elseif tempS11dB <= -3
+
+                    tempScore = tempScore + 10;
+
+                end
+
+            end
+
+            % Directivity score
+
+            if ~isnan(tempDirectivity)
+
+                if tempDirectivity >= 20
+
+                    tempScore = tempScore + 30;
+
+                elseif tempDirectivity >= 15
+
+                    tempScore = tempScore + 25;
+
+                elseif tempDirectivity >= 10
+
+                    tempScore = tempScore + 15;
+
+                end
+
+            end
+
+            % VSWR score
+
+            if ~isnan(tempVSWR)
+
+                if tempVSWR <= 1.5
+
+                    tempScore = tempScore + 20;
+
+                elseif tempVSWR <= 2
+
+                    tempScore = tempScore + 15;
+
+                elseif tempVSWR <= 3
+
+                    tempScore = tempScore + 5;
+
+                end
+
+            end
+
+            % Gain score
+
+            if ~isnan(tempGain)
+
+                if tempGain >= 15
+
+                    tempScore = tempScore + 10;
+
+                elseif tempGain >= 10
+
+                    tempScore = tempScore + 5;
+
+                end
+
+            end
+
+            %% Store
+
+            optimizationData = [ ...
+                optimizationData; ...
+                testWidth ...
+                testHeight ...
+                testLength ...
+                tempS11dB ...
+                tempVSWR ...
+                tempGain ...
+                tempDirectivity ...
+                tempScore];
+
+        end
 
     end
 
 end
 
-%% =========================================================================
-% 33. PARAMETER SWEEP GRAPH
-% =========================================================================
+%% ========================================================================
+% 42. CONVERT OPTIMIZATION DATA TO TABLE
+% ========================================================================
 
-figure( ...
-    'Name','Parameter Sweep', ...
-    'NumberTitle','off');
-
-plot( ...
-    lengthValues*100, ...
-    parameterS11, ...
-    'LineWidth',2);
-
-grid on;
-
-xlabel('Horn Length (cm)');
-ylabel('S_{11} at 10 GHz (dB)');
-
-title('Horn Length Optimization');
-
-saveas( ...
-    gcf, ...
-    fullfile(resultFolder, ...
-    '30_Length_Optimization.png'));
-
-%% =========================================================================
-% 34. FIND BEST LENGTH
-% =========================================================================
-
-if any(~isnan(parameterS11))
-
-    [bestParameterS11,bestIndex] = ...
-        min(parameterS11);
-
-    bestHornLength = ...
-        lengthValues(bestIndex);
-
-else
-
-    bestParameterS11 = NaN;
-    bestHornLength = NaN;
-
-end
-
-%% =========================================================================
-% 35. CREATE NUMERICAL RESULT TABLE
-% =========================================================================
-
-Results = table( ...
-    freqRange(:)/1e9, ...
-    S11dB(:), ...
-    returnLoss(:), ...
-    VSWR(:), ...
+optimizationTable = table( ...
+    optimizationData(:,1), ...
+    optimizationData(:,2), ...
+    optimizationData(:,3), ...
+    optimizationData(:,4), ...
+    optimizationData(:,5), ...
+    optimizationData(:,6), ...
+    optimizationData(:,7), ...
+    optimizationData(:,8), ...
     'VariableNames', ...
     { ...
-    'Frequency_GHz', ...
+    'FlareWidth_m', ...
+    'FlareHeight_m', ...
+    'HornLength_m', ...
     'S11_dB', ...
-    'ReturnLoss_dB', ...
-    'VSWR' ...
+    'VSWR', ...
+    'Gain_dBi', ...
+    'Directivity_dBi', ...
+    'Score' ...
     });
 
-writetable( ...
-    Results, ...
-    fullfile( ...
-    resultFolder, ...
-    'RF_Analysis.csv'));
+%% ========================================================================
+% 43. FIND BEST DESIGN
+% ========================================================================
 
-%% =========================================================================
-% 36. PARAMETER SWEEP TABLE
-% =========================================================================
+validScores = optimizationTable.Score;
 
-OptimizationResults = table( ...
-    lengthValues(:)*100, ...
-    parameterS11(:), ...
-    'VariableNames', ...
-    { ...
-    'HornLength_cm', ...
-    'S11_dB' ...
-    });
+[bestScore,bestIndex] = ...
+    max(validScores);
 
-writetable( ...
-    OptimizationResults, ...
-    fullfile( ...
-    resultFolder, ...
-    'Length_Optimization.csv'));
-
-%% =========================================================================
-% 37. AUTOMATIC PERFORMANCE SCORE
-% =========================================================================
-
-score = 0;
-
-% S11 criterion
-if minS11 <= -10
-    score = score + 30;
-elseif minS11 <= -6
-    score = score + 20;
-elseif minS11 <= -3
-    score = score + 10;
-end
-
-% VSWR criterion
-if minVSWR <= 1.5
-    score = score + 25;
-elseif minVSWR <= 2
-    score = score + 20;
-elseif minVSWR <= 3
-    score = score + 10;
-end
-
-% Bandwidth criterion
-if ~isnan(fractionalBandwidth)
-
-    if fractionalBandwidth >= 20
-        score = score + 25;
-    elseif fractionalBandwidth >= 10
-        score = score + 15;
-    else
-        score = score + 5;
-    end
-
-end
-
-% Geometry score
-if flareWidth/lambda0 > 1 && ...
-   flareHeight/lambda0 > 1
-
-    score = score + 10;
-
-end
-
-% Simulation completion
-score = score + 10;
-
-%% =========================================================================
-% 38. PERFORMANCE CLASSIFICATION
-% =========================================================================
-
-if score >= 85
-
-    performanceClass = ...
-        'EXCELLENT';
-
-elseif score >= 70
-
-    performanceClass = ...
-        'GOOD';
-
-elseif score >= 50
-
-    performanceClass = ...
-        'MODERATE';
-
-else
-
-    performanceClass = ...
-        'REQUIRES OPTIMIZATION';
-
-end
-
-%% =========================================================================
-% 39. FINAL DASHBOARD
-% =========================================================================
-
-elapsedTime = toc(totalTimer);
+bestDesign = ...
+    optimizationTable(bestIndex,:);
 
 fprintf('\n');
 fprintf('=====================================================================\n');
-fprintf('                    FINAL PERFORMANCE DASHBOARD\n');
+fprintf('                     OPTIMIZATION RESULT\n');
 fprintf('=====================================================================\n');
 
-fprintf('\nGENERAL\n');
-fprintf('---------------------------------------------------------------------\n');
+fprintf('\nBest Design:\n');
 
-fprintf('Operating Frequency       : %.2f GHz\n',f0/1e9);
+fprintf('Flare Width  : %.2f cm\n',...
+    bestDesign.FlareWidth_m*100);
 
-fprintf('Wavelength                : %.3f mm\n',lambda0*1000);
+fprintf('Flare Height : %.2f cm\n',...
+    bestDesign.FlareHeight_m*100);
 
-fprintf('Simulation Time           : %.2f seconds\n',elapsedTime);
+fprintf('Horn Length  : %.2f cm\n',...
+    bestDesign.HornLength_m*100);
 
-fprintf('\nMATCHING\n');
-fprintf('---------------------------------------------------------------------\n');
+fprintf('S11          : %.2f dB\n',...
+    bestDesign.S11_dB);
 
-fprintf('Minimum S11               : %.3f dB\n',minS11);
+fprintf('VSWR         : %.2f\n',...
+    bestDesign.VSWR);
 
-fprintf('Best Matching Frequency   : %.3f GHz\n',...
-    bestMatchFrequency/1e9);
+fprintf('Gain         : %.2f dBi\n',...
+    bestDesign.Gain_dBi);
 
-fprintf('Minimum VSWR              : %.3f\n',minVSWR);
+fprintf('Directivity  : %.2f dBi\n',...
+    bestDesign.Directivity_dBi);
 
-fprintf('Best VSWR Frequency       : %.3f GHz\n',...
-    bestVSWRFrequency/1e9);
+fprintf('Score        : %.0f / 100\n',...
+    bestDesign.Score);
 
-if ~isnan(bandwidth10dB)
+%% ========================================================================
+% 44. SAVE OPTIMIZATION TABLE
+% ========================================================================
 
-    fprintf('\n-10 dB BANDWIDTH\n');
-    fprintf('---------------------------------------------------------------------\n');
+writetable( ...
+    optimizationTable, ...
+    fullfile( ...
+    resultFolder, ...
+    'Complete_Optimization_Results.csv'));
 
-    fprintf('Lower Frequency           : %.3f GHz\n',...
-        lower10dB/1e9);
+%% ========================================================================
+% 45. CREATE OPTIMIZED ANTENNA
+% ========================================================================
 
-    fprintf('Upper Frequency           : %.3f GHz\n',...
-        upper10dB/1e9);
+optimizedHorn = horn;
 
-    fprintf('Bandwidth                 : %.3f GHz\n',...
-        bandwidth10dB/1e9);
+optimizedHorn.FlareWidth = ...
+    bestDesign.FlareWidth_m;
 
-    fprintf('Fractional Bandwidth      : %.2f %%\n',...
-        fractionalBandwidth);
+optimizedHorn.FlareHeight = ...
+    bestDesign.FlareHeight_m;
+
+optimizedHorn.Length = ...
+    bestDesign.HornLength_m;
+
+%% ========================================================================
+% 46. OPTIMIZED GEOMETRY
+% ========================================================================
+
+figure( ...
+    'Name','Optimized Horn Geometry', ...
+    'NumberTitle','off');
+
+show(optimizedHorn);
+
+title('Optimized Rectangular Horn Antenna');
+
+saveas( ...
+    gcf, ...
+    fullfile( ...
+    resultFolder, ...
+    '40_Optimized_Geometry.png'));
+
+%% ========================================================================
+% 47. OPTIMIZED RADIATION PATTERN
+% ========================================================================
+
+figure( ...
+    'Name','Optimized Radiation Pattern', ...
+    'NumberTitle','off');
+
+pattern( ...
+    optimizedHorn, ...
+    f0);
+
+title('Optimized Horn Radiation Pattern at 10 GHz');
+
+saveas( ...
+    gcf, ...
+    fullfile( ...
+    resultFolder, ...
+    '41_Optimized_Radiation_Pattern.png'));
+
+%% ========================================================================
+% 48. ORIGINAL VS OPTIMIZED S11
+% ========================================================================
+
+try
+
+    optimizedS = ...
+        sparameters( ...
+        optimizedHorn, ...
+        freqRange);
+
+    optimizedS11 = ...
+        squeeze( ...
+        optimizedS.Parameters(1,1,:));
+
+    optimizedS11dB = ...
+        20*log10(abs(optimizedS11));
+
+    figure( ...
+        'Name','Original vs Optimized S11', ...
+        'NumberTitle','off');
+
+    plot( ...
+        freqRange/1e9, ...
+        S11dB, ...
+        'LineWidth',2);
+
+    hold on;
+
+    plot( ...
+        freqRange/1e9, ...
+        optimizedS11dB, ...
+        '--', ...
+        'LineWidth',2);
+
+    yline(-10,'--');
+
+    grid on;
+
+    xlabel('Frequency (GHz)');
+    ylabel('S_{11} (dB)');
+
+    title('Original vs Optimized Horn S_{11}');
+
+    legend( ...
+        'Original Design', ...
+        'Optimized Design', ...
+        '-10 dB Target', ...
+        'Location','best');
+
+    saveas( ...
+        gcf, ...
+        fullfile( ...
+        resultFolder, ...
+        '42_Original_vs_Optimized_S11.png'));
+
+catch
+
+    fprintf('Optimized S11 comparison unavailable.\n');
 
 end
 
-fprintf('\nANTENNA PERFORMANCE\n');
-fprintf('---------------------------------------------------------------------\n');
+%% ========================================================================
+% 49. OPTIMIZATION SCORE DISTRIBUTION
+% ========================================================================
 
-if ~isnan(gainAt10GHz)
+figure( ...
+    'Name','Optimization Score', ...
+    'NumberTitle','off');
 
-    fprintf('Gain                      : %.2f dBi\n',...
-        gainAt10GHz);
+histogram( ...
+    optimizationTable.Score, ...
+    15);
 
-end
+grid on;
 
-if ~isnan(directivityAt10GHz)
+xlabel('Design Score');
+ylabel('Number of Designs');
 
-    fprintf('Directivity               : %.2f dBi\n',...
-        directivityAt10GHz);
+title('Distribution of Optimization Scores');
 
-end
+saveas( ...
+    gcf, ...
+    fullfile( ...
+    resultFolder, ...
+    '43_Optimization_Score.png'));
 
-if ~isnan(efficiencyAt10GHz)
+%% ========================================================================
+% 50. TOP 10 DESIGNS
+% ========================================================================
 
-    fprintf('Efficiency                : %.2f %%\n',...
-        efficiencyAt10GHz*100);
+sortedTable = ...
+    sortrows( ...
+    optimizationTable, ...
+    'Score', ...
+    'descend');
 
-end
+top10Count = ...
+    min(10,height(sortedTable));
 
-fprintf('\nOPTIMIZATION\n');
-fprintf('---------------------------------------------------------------------\n');
+top10 = ...
+    sortedTable(1:top10Count,:);
 
-if ~isnan(bestHornLength)
+writetable( ...
+    top10, ...
+    fullfile( ...
+    resultFolder, ...
+    'Top_10_Designs.csv'));
 
-    fprintf('Best Tested Length       : %.2f cm\n',...
-        bestHornLength*100);
+fprintf('\n');
+fprintf('Top %d designs exported.\n',top10Count);
 
-    fprintf('S11 at Best Length       : %.2f dB\n',...
-        bestParameterS11);
+%% ========================================================================
+% 51. OPTIMIZATION SUMMARY
+% ========================================================================
 
-end
-
-fprintf('\nOVERALL PROJECT SCORE\n');
-fprintf('---------------------------------------------------------------------\n');
-
-fprintf('Score                     : %d / 100\n',score);
-
-fprintf('Classification            : %s\n',performanceClass);
-
-fprintf('\nResults saved to:\n');
-fprintf('%s\n',resultFolder);
-
-fprintf('\n=====================================================================\n');
-fprintf('                 SIMULATION COMPLETED\n');
+fprintf('\n');
+fprintf('=====================================================================\n');
+fprintf('                    DESIGN RECOMMENDATION\n');
 fprintf('=====================================================================\n');
 
-%% =========================================================================
-% 40. GENERATE TEXT REPORT
-% =========================================================================
+if bestDesign.S11_dB <= -10
 
-reportPath = ...
-    fullfile(resultFolder, ...
-    'Final_Antenna_Report.txt');
-
-fid = fopen(reportPath,'w');
-
-fprintf(fid,...
-    'RECTANGULAR HORN ANTENNA - FINAL ANALYSIS REPORT\n');
-
-fprintf(fid,...
-    '=================================================\n\n');
-
-fprintf(fid,...
-    'Operating Frequency : %.3f GHz\n',...
-    f0/1e9);
-
-fprintf(fid,...
-    'Frequency Range     : %.3f - %.3f GHz\n',...
-    freqStart/1e9,...
-    freqStop/1e9);
-
-fprintf(fid,...
-    'Wavelength          : %.3f mm\n',...
-    lambda0*1000);
-
-fprintf(fid,...
-    'Flare Width         : %.3f m\n',...
-    flareWidth);
-
-fprintf(fid,...
-    'Flare Height        : %.3f m\n',...
-    flareHeight);
-
-fprintf(fid,...
-    'Horn Length         : %.3f m\n\n',...
-    hornLength);
-
-fprintf(fid,...
-    'Minimum S11         : %.3f dB\n',...
-    minS11);
-
-fprintf(fid,...
-    'Best Match Frequency: %.3f GHz\n',...
-    bestMatchFrequency/1e9);
-
-fprintf(fid,...
-    'Minimum VSWR        : %.3f\n',...
-    minVSWR);
-
-fprintf(fid,...
-    'Performance Score   : %d / 100\n',...
-    score);
-
-fprintf(fid,...
-    'Classification       : %s\n',...
-    performanceClass);
-
-if ~isnan(bandwidth10dB)
-
-    fprintf(fid,...
-        '-10 dB Bandwidth    : %.3f GHz\n',...
-        bandwidth10dB/1e9);
-
-    fprintf(fid,...
-        'Fractional BW       : %.2f %%\n',...
-        fractionalBandwidth);
+    fprintf('\nPASS: Optimized design reaches S11 <= -10 dB.\n');
 
 else
 
-    fprintf(fid,...
-        '-10 dB Bandwidth    : Not achieved\n');
+    fprintf('\nWARNING: Optimized design does not reach -10 dB.\n');
 
 end
 
-if ~isnan(gainAt10GHz)
+if bestDesign.VSWR <= 2
 
-    fprintf(fid,...
-        'Gain                : %.3f dBi\n',...
-        gainAt10GHz);
+    fprintf('PASS: Optimized design achieves VSWR <= 2.\n');
 
-end
+else
 
-if ~isnan(directivityAt10GHz)
-
-    fprintf(fid,...
-        'Directivity         : %.3f dBi\n',...
-        directivityAt10GHz);
+    fprintf('WARNING: VSWR remains above 2.\n');
 
 end
 
-if ~isnan(efficiencyAt10GHz)
+if bestDesign.Directivity_dBi >= 15
 
-    fprintf(fid,...
-        'Efficiency          : %.2f %%\n',...
-        efficiencyAt10GHz*100);
+    fprintf('PASS: Directivity exceeds 15 dBi.\n');
+
+else
+
+    fprintf('NOTE: Directivity can be further improved.\n');
 
 end
 
-fprintf(fid,...
-    '\nReport generated automatically by MATLAB.\n');
+fprintf('\nRecommended geometry:\n');
 
-fclose(fid);
+fprintf('Width  = %.2f cm\n',...
+    bestDesign.FlareWidth_m*100);
 
-fprintf('\nFinal report created:\n%s\n',reportPath);
+fprintf('Height = %.2f cm\n',...
+    bestDesign.FlareHeight_m*100);
+
+fprintf('Length = %.2f cm\n',...
+    bestDesign.HornLength_m*100);
+
+%% ========================================================================
+% 52. FINAL EXECUTION TIME
+% ========================================================================
+
+totalExecutionTime = toc(totalTimer);
+
+fprintf('\n');
+fprintf('=====================================================================\n');
+fprintf('TOTAL EXECUTION TIME : %.2f seconds\n',totalExecutionTime);
+fprintf('=====================================================================\n');
