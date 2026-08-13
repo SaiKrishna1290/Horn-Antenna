@@ -1,72 +1,60 @@
 %% ========================================================================
-% 41. HIGH-EFFICIENCY MULTI-PARAMETER OPTIMIZATION
+% 56. TWO-STAGE ADAPTIVE OPTIMIZATION
 % =========================================================================
 
 fprintf('\n');
 fprintf('=====================================================================\n');
-fprintf('             HIGH-EFFICIENCY HORN OPTIMIZATION\n');
+fprintf('              TWO-STAGE ADAPTIVE OPTIMIZATION\n');
 fprintf('=====================================================================\n');
 
-optimizationTimer = tic;
+adaptiveTimer = tic;
 
 %% ------------------------------------------------------------------------
-% DESIGN VARIABLES
+% STAGE 1 - COARSE SEARCH
 % -------------------------------------------------------------------------
 
-widthValues  = [0.08 0.09 0.10 0.11 0.12];
-heightValues = [0.05 0.06 0.07 0.08 0.09];
-lengthValues = [0.10 0.12 0.15 0.18 0.20];
+coarseWidth  = 0.08:0.01:0.12;
+coarseHeight = 0.05:0.01:0.09;
+coarseLength = 0.10:0.02:0.20;
 
-nW = numel(widthValues);
-nH = numel(heightValues);
-nL = numel(lengthValues);
+[nW,nH,nL] = deal( ...
+    numel(coarseWidth), ...
+    numel(coarseHeight), ...
+    numel(coarseLength));
 
-totalDesigns = nW*nH*nL;
+coarseCount = nW*nH*nL;
 
-fprintf('\nTotal candidate designs : %d\n',totalDesigns);
+fprintf('\nCoarse search designs : %d\n',coarseCount);
+
+%% Generate combinations
+
+[CW,CH,CL] = ndgrid( ...
+    coarseWidth,...
+    coarseHeight,...
+    coarseLength);
+
+CW = CW(:);
+CH = CH(:);
+CL = CL(:);
+
+%% Preallocate
+
+coarseS11  = NaN(coarseCount,1);
+coarseVSWR = NaN(coarseCount,1);
 
 %% ------------------------------------------------------------------------
-% CREATE ALL DESIGN COMBINATIONS
+% COARSE S11 SCREENING
 % -------------------------------------------------------------------------
 
-[W,H,L] = ndgrid( ...
-    widthValues, ...
-    heightValues, ...
-    lengthValues);
+fprintf('Running coarse S11 screening...\n');
 
-W = W(:);
-H = H(:);
-L = L(:);
-
-%% ------------------------------------------------------------------------
-% PREALLOCATE RESULTS
-% -------------------------------------------------------------------------
-
-S11Result = NaN(totalDesigns,1);
-VSWRResult = NaN(totalDesigns,1);
-
-GainResult = NaN(totalDesigns,1);
-DirectivityResult = NaN(totalDesigns,1);
-
-Score = zeros(totalDesigns,1);
-
-%% ------------------------------------------------------------------------
-% STAGE 1
-% S11-BASED SCREENING
-%
-% Only calculate S11 for all designs.
-% Expensive radiation-pattern calculations are postponed.
-% -------------------------------------------------------------------------
-
-fprintf('\nStage 1: S11 screening...\n');
-
-for k = 1:totalDesigns
+for k = 1:coarseCount
 
     testHorn = horn;
 
-    testHorn.FlareWidth  = W(k);
-    testHorn.FlareHeight = H(k);
-    testHorn.Length      = L(k);
+    testHorn.FlareWidth  = CW(k);
+    testHorn.FlareHeight = CH(k);
+    testHorn.Length      = CL(k);
 
     try
 
@@ -75,452 +63,420 @@ for k = 1:totalDesigns
         tempS11 = ...
             squeeze(tempS.Parameters(1,1));
 
-        S11Result(k) = ...
+        coarseS11(k) = ...
             20*log10(abs(tempS11));
-
-        %% VSWR
 
         gamma = abs(tempS11);
 
         if gamma < 1
 
-            VSWRResult(k) = ...
-                (1 + gamma)/(1 - gamma);
+            coarseVSWR(k) = ...
+                (1+gamma)/(1-gamma);
 
         end
 
     catch
 
-        S11Result(k) = NaN;
-        VSWRResult(k) = NaN;
+        coarseS11(k) = NaN;
+        coarseVSWR(k) = NaN;
 
     end
 
 end
 
 %% ------------------------------------------------------------------------
-% IDENTIFY BEST S11 CANDIDATES
+% REMOVE INVALID RESULTS
 % -------------------------------------------------------------------------
 
-valid = ~isnan(S11Result);
+valid = ...
+    ~isnan(coarseS11) & ...
+    ~isnan(coarseVSWR);
 
-validIndices = find(valid);
+CW = CW(valid);
+CH = CH(valid);
+CL = CL(valid);
 
-[~,sortIndex] = ...
-    sort(S11Result(validIndices),'ascend');
-
-sortedIndices = ...
-    validIndices(sortIndex);
+coarseS11  = coarseS11(valid);
+coarseVSWR = coarseVSWR(valid);
 
 %% ------------------------------------------------------------------------
-% NUMBER OF DESIGNS TO ANALYZE IN STAGE 2
+% COARSE SCORE
 % -------------------------------------------------------------------------
 
-numCandidates = min(15,numel(sortedIndices));
+coarseScore = zeros(size(coarseS11));
 
-candidateIndices = ...
-    sortedIndices(1:numCandidates);
+%% S11 contribution
 
-fprintf('\nStage 1 complete.\n');
+coarseScore = coarseScore + ...
+    max(0,min(40, ...
+    (-coarseS11)*3));
 
-fprintf('Valid designs       : %d\n',sum(valid));
+%% VSWR contribution
 
-fprintf('Stage-2 candidates  : %d\n',numCandidates);
+coarseScore = coarseScore + ...
+    max(0,min(30, ...
+    30 - 10*(coarseVSWR-1)));
 
-fprintf('Skipped expensive calculations for %d designs.\n',...
-    totalDesigns-numCandidates);
+%% Physical-size contribution
+
+physicalPenalty = ...
+    (CW/0.10 + ...
+     CH/0.07 + ...
+     CL/0.15);
+
+coarseScore = ...
+    coarseScore + ...
+    max(0,30 - ...
+    5*abs(physicalPenalty-3));
 
 %% ------------------------------------------------------------------------
-% STAGE 2
-% DETAILED EM ANALYSIS ONLY FOR BEST CANDIDATES
+% SELECT TOP DESIGNS
 % -------------------------------------------------------------------------
 
-fprintf('\nStage 2: Gain and directivity analysis...\n');
+[~,rankIndex] = ...
+    sort(coarseScore,'descend');
 
-for n = 1:numCandidates
+topCoarse = ...
+    min(10,length(rankIndex));
 
-    k = candidateIndices(n);
+selectedIndex = ...
+    rankIndex(1:topCoarse);
+
+fprintf('\nTop coarse candidates: %d\n',topCoarse);
+
+%% ========================================================================
+% 57. STAGE 2 - FINE SEARCH AROUND TOP DESIGNS
+% =========================================================================
+
+fprintf('\nStarting fine optimization...\n');
+
+fineResults = [];
+
+for n = 1:topCoarse
+
+    baseIndex = selectedIndex(n);
+
+    baseW = CW(baseIndex);
+    baseH = CH(baseIndex);
+    baseL = CL(baseIndex);
+
+    %% Fine ranges
+
+    fineWidth = ...
+        max(0.06,baseW-0.01):0.002:...
+        min(0.14,baseW+0.01);
+
+    fineHeight = ...
+        max(0.04,baseH-0.01):0.002:...
+        min(0.11,baseH+0.01);
+
+    fineLength = ...
+        max(0.08,baseL-0.02):0.005:...
+        min(0.25,baseL+0.02);
+
+    [FW,FH,FL] = ndgrid( ...
+        fineWidth,...
+        fineHeight,...
+        fineLength);
+
+    FW = FW(:);
+    FH = FH(:);
+    FL = FL(:);
+
+    localCount = numel(FW);
 
     fprintf( ...
-        'Analyzing candidate %d/%d\n',...
-        n,numCandidates);
+        'Refining candidate %d/%d : %d designs\n',...
+        n,topCoarse,localCount);
 
-    testHorn = horn;
+    for k = 1:localCount
 
-    testHorn.FlareWidth  = W(k);
-    testHorn.FlareHeight = H(k);
-    testHorn.Length      = L(k);
+        testHorn = horn;
 
-    %% Directivity
+        testHorn.FlareWidth  = FW(k);
+        testHorn.FlareHeight = FH(k);
+        testHorn.Length      = FL(k);
 
-    try
+        try
 
-        DirectivityResult(k) = ...
-            pattern( ...
-            testHorn,...
-            f0,...
-            0,...
-            0,...
-            'Type','directivity');
+            tempS = ...
+                sparameters(testHorn,f0);
 
-    catch
+            tempS11 = ...
+                squeeze(tempS.Parameters(1,1));
 
-        DirectivityResult(k) = NaN;
+            s11 = ...
+                20*log10(abs(tempS11));
 
-    end
+            gamma = abs(tempS11);
 
-    %% Gain
+            if gamma < 1
 
-    try
+                vswr = ...
+                    (1+gamma)/(1-gamma);
 
-        GainResult(k) = ...
-            pattern( ...
-            testHorn,...
-            f0,...
-            0,...
-            0,...
-            'Type','gain');
+            else
 
-    catch
+                vswr = Inf;
 
-        GainResult(k) = NaN;
+            end
+
+        catch
+
+            s11 = NaN;
+            vswr = NaN;
+
+        end
+
+        if isnan(s11)
+
+            continue;
+
+        end
+
+        %% Only perform expensive analysis on promising designs
+
+        if s11 > -6
+
+            continue;
+
+        end
+
+        %% Directivity
+
+        try
+
+            directivity = ...
+                pattern( ...
+                testHorn,...
+                f0,...
+                0,...
+                0,...
+                'Type','directivity');
+
+        catch
+
+            directivity = NaN;
+
+        end
+
+        %% Gain
+
+        try
+
+            gain = ...
+                pattern( ...
+                testHorn,...
+                f0,...
+                0,...
+                0,...
+                'Type','gain');
+
+        catch
+
+            gain = NaN;
+
+        end
+
+        %% Combined score
+
+        if isnan(directivity) || isnan(gain)
+
+            continue;
+
+        end
+
+        score = 0;
+
+        %% S11
+
+        score = score + ...
+            min(40,max(0,-2*s11));
+
+        %% VSWR
+
+        score = score + ...
+            min(20,max(0,20-10*(vswr-1)));
+
+        %% Directivity
+
+        score = score + ...
+            min(25,max(0,directivity));
+
+        %% Gain
+
+        score = score + ...
+            min(15,max(0,gain));
+
+        %% Store
+
+        fineResults = [
+            fineResults;
+            FW(k) ...
+            FH(k) ...
+            FL(k) ...
+            s11 ...
+            vswr ...
+            gain ...
+            directivity ...
+            score
+            ];
 
     end
 
 end
 
 %% ========================================================================
-% 42. FAST DESIGN SCORING
+% 58. FINAL OPTIMIZATION TABLE
 % =========================================================================
 
-fprintf('\nCalculating design scores...\n');
+if isempty(fineResults)
 
-%% S11 score
+    warning( ...
+        'No fine-search candidate passed the S11 threshold.');
 
-Score(S11Result <= -15) = ...
-    Score(S11Result <= -15) + 40;
+else
 
-Score(S11Result > -15 & ...
-      S11Result <= -10) = ...
-    Score(S11Result > -15 & ...
-          S11Result <= -10) + 35;
+    finalTable = table( ...
+        fineResults(:,1),...
+        fineResults(:,2),...
+        fineResults(:,3),...
+        fineResults(:,4),...
+        fineResults(:,5),...
+        fineResults(:,6),...
+        fineResults(:,7),...
+        fineResults(:,8),...
+        'VariableNames',...
+        { ...
+        'Width_m',...
+        'Height_m',...
+        'Length_m',...
+        'S11_dB',...
+        'VSWR',...
+        'Gain_dBi',...
+        'Directivity_dBi',...
+        'Score' ...
+        });
 
-Score(S11Result > -10 & ...
-      S11Result <= -6) = ...
-    Score(S11Result > -10 & ...
-          S11Result <= -6) + 25;
+    %% Sort
 
-Score(S11Result > -6 & ...
-      S11Result <= -3) = ...
-    Score(S11Result > -6 & ...
-          S11Result <= -3) + 10;
+    finalTable = ...
+        sortrows( ...
+        finalTable,...
+        'Score',...
+        'descend');
 
-%% Directivity score
+    %% Best design
 
-Score(DirectivityResult >= 20) = ...
-    Score(DirectivityResult >= 20) + 30;
+    finalBest = ...
+        finalTable(1,:);
 
-Score(DirectivityResult >= 15 & ...
-      DirectivityResult < 20) = ...
-    Score(DirectivityResult >= 15 & ...
-          DirectivityResult < 20) + 25;
+    fprintf('\n');
+    fprintf('=====================================================================\n');
+    fprintf('                    FINAL OPTIMIZED DESIGN\n');
+    fprintf('=====================================================================\n');
 
-Score(DirectivityResult >= 10 & ...
-      DirectivityResult < 15) = ...
-    Score(DirectivityResult >= 10 & ...
-          DirectivityResult < 15) + 15;
+    fprintf('\nWidth       : %.3f cm\n',...
+        finalBest.Width_m*100);
 
-%% VSWR score
+    fprintf('Height      : %.3f cm\n',...
+        finalBest.Height_m*100);
 
-Score(VSWRResult <= 1.5) = ...
-    Score(VSWRResult <= 1.5) + 20;
+    fprintf('Length      : %.3f cm\n',...
+        finalBest.Length_m*100);
 
-Score(VSWRResult > 1.5 & ...
-      VSWRResult <= 2) = ...
-    Score(VSWRResult > 1.5 & ...
-          VSWRResult <= 2) + 15;
+    fprintf('S11         : %.3f dB\n',...
+        finalBest.S11_dB);
 
-Score(VSWRResult > 2 & ...
-      VSWRResult <= 3) = ...
-    Score(VSWRResult > 2 & ...
-          VSWRResult <= 3) + 5;
+    fprintf('VSWR        : %.3f\n',...
+        finalBest.VSWR);
 
-%% Gain score
+    fprintf('Gain        : %.3f dBi\n',...
+        finalBest.Gain_dBi);
 
-Score(GainResult >= 15) = ...
-    Score(GainResult >= 15) + 10;
+    fprintf('Directivity : %.3f dBi\n',...
+        finalBest.Directivity_dBi);
 
-Score(GainResult >= 10 & ...
-      GainResult < 15) = ...
-    Score(GainResult >= 10 & ...
-          GainResult < 15) + 5;
+    fprintf('Score       : %.2f / 100\n',...
+        finalBest.Score);
+
+    %% Save
+
+    writetable( ...
+        finalTable,...
+        fullfile( ...
+        resultFolder,...
+        'Final_Optimized_Designs.csv'));
+
+end
 
 %% ========================================================================
-% 43. CREATE RESULT TABLE DIRECTLY
+% 59. CREATE FINAL ANTENNA
 % =========================================================================
 
-optimizationTable = table( ...
-    W,...
-    H,...
-    L,...
-    S11Result,...
-    VSWRResult,...
-    GainResult,...
-    DirectivityResult,...
-    Score,...
-    'VariableNames',...
-    { ...
-    'FlareWidth_m',...
-    'FlareHeight_m',...
-    'HornLength_m',...
-    'S11_dB',...
-    'VSWR',...
-    'Gain_dBi',...
-    'Directivity_dBi',...
-    'Score' ...
-    });
+if ~isempty(fineResults)
+
+    finalHorn = horn;
+
+    finalHorn.FlareWidth = ...
+        finalBest.Width_m;
+
+    finalHorn.FlareHeight = ...
+        finalBest.Height_m;
+
+    finalHorn.Length = ...
+        finalBest.Length_m;
+
+    %% Geometry
+
+    figure( ...
+        'Name','Final Optimized Horn',...
+        'NumberTitle','off');
+
+    show(finalHorn);
+
+    title('Final Optimized Rectangular Horn');
+
+    saveas( ...
+        gcf,...
+        fullfile( ...
+        resultFolder,...
+        'Final_Optimized_Geometry.png'));
+
+    %% Radiation pattern
+
+    figure( ...
+        'Name','Final Optimized Pattern',...
+        'NumberTitle','off');
+
+    pattern(finalHorn,f0);
+
+    title('Final Optimized Radiation Pattern - 10 GHz');
+
+    saveas( ...
+        gcf,...
+        fullfile( ...
+        resultFolder,...
+        'Final_Optimized_Pattern.png'));
+
+end
 
 %% ========================================================================
-% 44. REMOVE INVALID DESIGNS
+% 60. FINAL OPTIMIZATION TIME
 % =========================================================================
 
-optimizationTable = ...
-    optimizationTable( ...
-    ~isnan(optimizationTable.S11_dB),:);
-
-%% ========================================================================
-% 45. SORT DESIGNS
-% =========================================================================
-
-optimizationTable = ...
-    sortrows( ...
-    optimizationTable,...
-    'Score',...
-    'descend');
-
-%% ========================================================================
-% 46. BEST DESIGN
-% =========================================================================
-
-bestDesign = ...
-    optimizationTable(1,:);
+adaptiveTime = ...
+    toc(adaptiveTimer);
 
 fprintf('\n');
 fprintf('=====================================================================\n');
-fprintf('                     BEST DESIGN FOUND\n');
+fprintf('             ADAPTIVE OPTIMIZATION COMPLETE\n');
 fprintf('=====================================================================\n');
 
-fprintf('\nWidth       : %.2f cm\n',...
-    bestDesign.FlareWidth_m*100);
+fprintf('Coarse Designs      : %d\n',coarseCount);
 
-fprintf('Height      : %.2f cm\n',...
-    bestDesign.FlareHeight_m*100);
+fprintf('Fine Candidates     : %d\n',topCoarse);
 
-fprintf('Length      : %.2f cm\n',...
-    bestDesign.HornLength_m*100);
-
-fprintf('\nS11         : %.2f dB\n',...
-    bestDesign.S11_dB);
-
-fprintf('VSWR        : %.3f\n',...
-    bestDesign.VSWR);
-
-fprintf('Gain        : %.2f dBi\n',...
-    bestDesign.Gain_dBi);
-
-fprintf('Directivity : %.2f dBi\n',...
-    bestDesign.Directivity_dBi);
-
-fprintf('Score       : %.0f / 100\n',...
-    bestDesign.Score);
-
-%% ========================================================================
-% 47. SAVE COMPLETE OPTIMIZATION RESULTS
-% =========================================================================
-
-writetable( ...
-    optimizationTable,...
-    fullfile( ...
-    resultFolder,...
-    'Optimized_Horn_Results.csv'));
-
-%% ========================================================================
-% 48. TOP 10 DESIGNS
-% =========================================================================
-
-topN = min(10,height(optimizationTable));
-
-top10 = ...
-    optimizationTable(1:topN,:);
-
-writetable( ...
-    top10,...
-    fullfile( ...
-    resultFolder,...
-    'Top_10_Horn_Designs.csv'));
-
-%% ========================================================================
-% 49. CREATE BEST ANTENNA
-% =========================================================================
-
-optimizedHorn = horn;
-
-optimizedHorn.FlareWidth = ...
-    bestDesign.FlareWidth_m;
-
-optimizedHorn.FlareHeight = ...
-    bestDesign.FlareHeight_m;
-
-optimizedHorn.Length = ...
-    bestDesign.HornLength_m;
-
-%% ========================================================================
-% 50. VERIFY OPTIMIZED DESIGN
-% =========================================================================
-
-fprintf('\nVerifying optimized antenna...\n');
-
-optimizedS = ...
-    sparameters( ...
-    optimizedHorn,...
-    freqRange);
-
-optimizedS11 = ...
-    squeeze(optimizedS.Parameters(1,1,:));
-
-optimizedS11dB = ...
-    20*log10(abs(optimizedS11));
-
-%% ========================================================================
-% 51. ORIGINAL VS OPTIMIZED S11
-% =========================================================================
-
-figure( ...
-    'Name','Original vs Optimized S11',...
-    'NumberTitle','off');
-
-plot( ...
-    freqRange/1e9,...
-    S11dB,...
-    'LineWidth',2);
-
-hold on;
-
-plot( ...
-    freqRange/1e9,...
-    optimizedS11dB,...
-    '--',...
-    'LineWidth',2);
-
-yline( ...
-    -10,...
-    ':');
-
-grid on;
-
-xlabel('Frequency (GHz)');
-ylabel('S_{11} (dB)');
-
-title('Original vs Optimized Horn');
-
-legend( ...
-    'Original',...
-    'Optimized',...
-    '-10 dB Target',...
-    'Location','best');
-
-saveas( ...
-    gcf,...
-    fullfile( ...
-    resultFolder,...
-    'Optimized_vs_Original_S11.png'));
-
-%% ========================================================================
-% 52. OPTIMIZED GEOMETRY
-% =========================================================================
-
-figure( ...
-    'Name','Optimized Horn Geometry',...
-    'NumberTitle','off');
-
-show(optimizedHorn);
-
-title('Optimized Rectangular Horn Antenna');
-
-saveas( ...
-    gcf,...
-    fullfile( ...
-    resultFolder,...
-    'Optimized_Geometry.png'));
-
-%% ========================================================================
-% 53. OPTIMIZED RADIATION PATTERN
-% =========================================================================
-
-figure( ...
-    'Name','Optimized Radiation Pattern',...
-    'NumberTitle','off');
-
-pattern( ...
-    optimizedHorn,...
-    f0);
-
-title('Optimized Horn Radiation Pattern at 10 GHz');
-
-saveas( ...
-    gcf,...
-    fullfile( ...
-    resultFolder,...
-    'Optimized_Radiation_Pattern.png'));
-
-%% ========================================================================
-% 54. OPTIMIZATION SCORE GRAPH
-% =========================================================================
-
-figure( ...
-    'Name','Optimization Scores',...
-    'NumberTitle','off');
-
-numPlot = ...
-    min(20,height(optimizationTable));
-
-bar( ...
-    optimizationTable.Score(1:numPlot));
-
-grid on;
-
-xlabel('Design Rank');
-ylabel('Score');
-
-title('Top Horn Design Scores');
-
-saveas( ...
-    gcf,...
-    fullfile( ...
-    resultFolder,...
-    'Optimization_Scores.png'));
-
-%% ========================================================================
-% 55. OPTIMIZATION TIME
-% =========================================================================
-
-optimizationTime = toc(optimizationTimer);
-
-fprintf('\n');
-fprintf('=====================================================================\n');
-fprintf('                    OPTIMIZATION SUMMARY\n');
-fprintf('=====================================================================\n');
-
-fprintf('Total Designs          : %d\n',totalDesigns);
-
-fprintf('S11 Calculations       : %d\n',totalDesigns);
-
-fprintf('Detailed EM Analyses   : %d\n',numCandidates);
-
-fprintf('Skipped Detailed Runs  : %d\n',...
-    totalDesigns-numCandidates);
-
-fprintf('Optimization Time      : %.2f seconds\n',...
-    optimizationTime);
+fprintf('Execution Time      : %.2f seconds\n',adaptiveTime);
 
 fprintf('=====================================================================\n');
