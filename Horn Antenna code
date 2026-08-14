@@ -1,103 +1,135 @@
 %% ========================================================================
-% 56. HIGH-EFFICIENCY ADAPTIVE HORN OPTIMIZATION
+% 56. ULTRA-EFFICIENT SURROGATE-ASSISTED OPTIMIZATION
 % =========================================================================
 
 fprintf('\n');
 fprintf('=====================================================================\n');
-fprintf('          HIGH-EFFICIENCY ADAPTIVE OPTIMIZATION\n');
+fprintf('        ULTRA-EFFICIENT HORN ANTENNA OPTIMIZATION\n');
 fprintf('=====================================================================\n');
 
 optimizationTimer = tic;
 
 %% ========================================================================
-% OPTIMIZATION SETTINGS
+% 1. OPTIMIZATION CONFIGURATION
 % =========================================================================
 
-% Target frequency
 targetFreq = f0;
 
-% Maximum number of promising designs for detailed analysis
-maxCandidates = 8;
+% Design limits
+widthMin  = 0.08;
+widthMax  = 0.12;
 
-% S11 threshold for expensive analysis
-s11Threshold = -6;
+heightMin = 0.05;
+heightMax = 0.09;
 
-%% ========================================================================
-% STAGE 1 - COARSE SEARCH
-% =========================================================================
+lengthMin = 0.10;
+lengthMax = 0.20;
 
-coarseWidth  = 0.08:0.01:0.12;
-coarseHeight = 0.05:0.01:0.09;
-coarseLength = 0.10:0.02:0.20;
+% Number of real EM simulations
+initialSamples = 30;
 
-%% Generate all combinations
+% Number of predicted candidates
+predictedCandidates = 15;
 
-[CW,CH,CL] = ndgrid( ...
-    coarseWidth,...
-    coarseHeight,...
-    coarseLength);
+% Final detailed candidates
+finalCandidates = 5;
 
-CW = CW(:);
-CH = CH(:);
-CL = CL(:);
+fprintf('\nOptimization configuration:\n');
 
-numCoarse = numel(CW);
-
-fprintf('\nCoarse designs : %d\n',numCoarse);
+fprintf('Initial EM samples : %d\n',initialSamples);
+fprintf('Predicted designs  : %d\n',predictedCandidates);
+fprintf('Final designs      : %d\n',finalCandidates);
 
 %% ========================================================================
-% PREALLOCATE
+% 2. GENERATE INITIAL DESIGN SPACE
 % =========================================================================
 
-coarseS11  = NaN(numCoarse,1);
-coarseVSWR = NaN(numCoarse,1);
+rng(10,'twister');
+
+initialWidth = ...
+    widthMin + ...
+    (widthMax-widthMin)*rand(initialSamples,1);
+
+initialHeight = ...
+    heightMin + ...
+    (heightMax-heightMin)*rand(initialSamples,1);
+
+initialLength = ...
+    lengthMin + ...
+    (lengthMax-lengthMin)*rand(initialSamples,1);
 
 %% ========================================================================
-% STAGE 1 - S11 SCREENING
+% 3. PREALLOCATE INITIAL RESULTS
 % =========================================================================
 
-fprintf('\nRunning S11 screening...\n');
+initialS11  = NaN(initialSamples,1);
+initialVSWR = NaN(initialSamples,1);
 
-% ---------------------------------------------------------
-% Use PARFOR when Parallel Computing Toolbox is available
-% ---------------------------------------------------------
+%% ========================================================================
+% 4. INITIAL ELECTROMAGNETIC SCREENING
+% =========================================================================
 
-useParallel = license('test','Distrib_Computing_Toolbox');
+fprintf('\n');
+fprintf('Running initial electromagnetic simulations...\n');
 
-if useParallel
+%% Check parallel capability
 
-    fprintf('Parallel processing enabled.\n');
+parallelAvailable = ...
+    license('test','Distrib_Computing_Toolbox');
 
-    parfor k = 1:numCoarse
+%% ========================================================================
+% 5. PARALLEL INITIAL SIMULATION
+% =========================================================================
 
-        testHorn = horn;
+if parallelAvailable
 
-        testHorn.FlareWidth  = CW(k);
-        testHorn.FlareHeight = CH(k);
-        testHorn.Length      = CL(k);
+    fprintf('Parallel execution enabled.\n');
+
+    pool = gcp('nocreate');
+
+    if isempty(pool)
+
+        parpool;
+
+    end
+
+    parfor k = 1:initialSamples
+
+        tempHorn = horn;
+
+        tempHorn.FlareWidth = ...
+            initialWidth(k);
+
+        tempHorn.FlareHeight = ...
+            initialHeight(k);
+
+        tempHorn.Length = ...
+            initialLength(k);
 
         try
 
             tempS = ...
-                sparameters(testHorn,targetFreq);
+                sparameters( ...
+                tempHorn,...
+                targetFreq);
 
             gamma = ...
                 abs(tempS.Parameters(1,1));
 
-            coarseS11(k) = ...
+            initialS11(k) = ...
                 20*log10(gamma);
 
             if gamma < 1
 
-                coarseVSWR(k) = ...
+                initialVSWR(k) = ...
                     (1+gamma)/(1-gamma);
 
             end
 
         catch
 
-            coarseS11(k)  = NaN;
-            coarseVSWR(k) = NaN;
+            initialS11(k) = NaN;
+            initialVSWR(k) = NaN;
 
         end
 
@@ -105,38 +137,46 @@ if useParallel
 
 else
 
-    fprintf('Parallel toolbox unavailable. Using serial processing.\n');
+    fprintf('Parallel toolbox unavailable.\n');
+    fprintf('Using serial execution.\n');
 
-    for k = 1:numCoarse
+    for k = 1:initialSamples
 
-        testHorn = horn;
+        tempHorn = horn;
 
-        testHorn.FlareWidth  = CW(k);
-        testHorn.FlareHeight = CH(k);
-        testHorn.Length      = CL(k);
+        tempHorn.FlareWidth = ...
+            initialWidth(k);
+
+        tempHorn.FlareHeight = ...
+            initialHeight(k);
+
+        tempHorn.Length = ...
+            initialLength(k);
 
         try
 
             tempS = ...
-                sparameters(testHorn,targetFreq);
+                sparameters( ...
+                tempHorn,...
+                targetFreq);
 
             gamma = ...
                 abs(tempS.Parameters(1,1));
 
-            coarseS11(k) = ...
+            initialS11(k) = ...
                 20*log10(gamma);
 
             if gamma < 1
 
-                coarseVSWR(k) = ...
+                initialVSWR(k) = ...
                     (1+gamma)/(1-gamma);
 
             end
 
         catch
 
-            coarseS11(k)  = NaN;
-            coarseVSWR(k) = NaN;
+            initialS11(k) = NaN;
+            initialVSWR(k) = NaN;
 
         end
 
@@ -145,155 +185,249 @@ else
 end
 
 %% ========================================================================
-% REMOVE INVALID RESULTS
+% 6. REMOVE FAILED SIMULATIONS
 % =========================================================================
 
 valid = ...
-    isfinite(coarseS11) & ...
-    isfinite(coarseVSWR);
+    isfinite(initialS11) & ...
+    isfinite(initialVSWR);
 
-CW = CW(valid);
-CH = CH(valid);
-CL = CL(valid);
+initialWidth  = initialWidth(valid);
+initialHeight = initialHeight(valid);
+initialLength = initialLength(valid);
 
-coarseS11  = coarseS11(valid);
-coarseVSWR = coarseVSWR(valid);
+initialS11  = initialS11(valid);
+initialVSWR = initialVSWR(valid);
 
-%% ========================================================================
-% FAST COARSE SCORE
-% =========================================================================
-
-coarseScore = zeros(size(coarseS11));
-
-%% S11 contribution
-
-coarseScore = ...
-    coarseScore + ...
-    min(50,max(0,-3*coarseS11));
-
-%% VSWR contribution
-
-coarseScore = ...
-    coarseScore + ...
-    min(30,max(0,30 - ...
-    10*(coarseVSWR-1)));
-
-%% Dimension stability contribution
-
-dimensionPenalty = ...
-    abs(CW-0.10)/0.10 + ...
-    abs(CH-0.07)/0.07 + ...
-    abs(CL-0.15)/0.15;
-
-coarseScore = ...
-    coarseScore + ...
-    max(0,20-10*dimensionPenalty);
+fprintf('\nSuccessful simulations : %d / %d\n',...
+    sum(valid),initialSamples);
 
 %% ========================================================================
-% SELECT BEST COARSE DESIGNS
+% 7. BUILD SURROGATE MODEL
 % =========================================================================
 
-[~,rank] = ...
-    sort(coarseScore,'descend');
+fprintf('\nBuilding S11 surrogate model...\n');
+
+X = [ ...
+    initialWidth,...
+    initialHeight,...
+    initialLength];
+
+Y = initialS11;
+
+%% Normalize input variables
+
+Xmean = mean(X,1);
+Xstd  = std(X,0,1);
+
+Xnorm = ...
+    (X-Xmean)./Xstd;
+
+%% ========================================================================
+% 8. USE LOCAL POLYNOMIAL SURROGATE
+% =========================================================================
+
+% Quadratic regression:
+%
+% S11 =
+% a0 + a1W + a2H + a3L
+%    + a4W^2 + a5H^2 + a6L^2
+%    + a7WH + a8WL + a9HL
+
+Wn = Xnorm(:,1);
+Hn = Xnorm(:,2);
+Ln = Xnorm(:,3);
+
+A = [ ...
+    ones(size(Wn)),...
+    Wn,...
+    Hn,...
+    Ln,...
+    Wn.^2,...
+    Hn.^2,...
+    Ln.^2,...
+    Wn.*Hn,...
+    Wn.*Ln,...
+    Hn.*Ln];
+
+beta = ...
+    A\Y;
+
+fprintf('Surrogate model created.\n');
+
+%% ========================================================================
+% 9. GENERATE LARGE VIRTUAL DESIGN SPACE
+% =========================================================================
+
+virtualSamples = 10000;
+
+virtualWidth = ...
+    widthMin + ...
+    (widthMax-widthMin)*rand(virtualSamples,1);
+
+virtualHeight = ...
+    heightMin + ...
+    (heightMax-heightMin)*rand(virtualSamples,1);
+
+virtualLength = ...
+    lengthMin + ...
+    (lengthMax-lengthMin)*rand(virtualSamples,1);
+
+%% ========================================================================
+% 10. PREDICT S11 WITHOUT EM SIMULATION
+% =========================================================================
+
+VnW = ...
+    (virtualWidth-Xmean(1))/Xstd(1);
+
+VnH = ...
+    (virtualHeight-Xmean(2))/Xstd(2);
+
+VnL = ...
+    (virtualLength-Xmean(3))/Xstd(3);
+
+Avirtual = [ ...
+    ones(virtualSamples,1),...
+    VnW,...
+    VnH,...
+    VnL,...
+    VnW.^2,...
+    VnH.^2,...
+    VnL.^2,...
+    VnW.*VnH,...
+    VnW.*VnL,...
+    VnH.*VnL];
+
+predictedS11 = ...
+    Avirtual*beta;
+
+%% ========================================================================
+% 11. RANK VIRTUAL DESIGNS
+% =========================================================================
+
+[~,virtualRank] = ...
+    sort(predictedS11,'ascend');
+
+%% Avoid selecting extremely similar designs
+
+selectedVirtual = [];
+
+minDistance = 0.05;
+
+for k = 1:length(virtualRank)
+
+    idx = virtualRank(k);
+
+    candidate = [ ...
+        virtualWidth(idx),...
+        virtualHeight(idx),...
+        virtualLength(idx)];
+
+    if isempty(selectedVirtual)
+
+        selectedVirtual = idx;
+
+    else
+
+        selectedPoints = [ ...
+            virtualWidth(selectedVirtual),...
+            virtualHeight(selectedVirtual),...
+            virtualLength(selectedVirtual)];
+
+        normalizedDistance = ...
+            sqrt(sum( ...
+            ((selectedPoints-candidate)./[ ...
+            widthMax-widthMin,...
+            heightMax-heightMin,...
+            lengthMax-lengthMin]).^2,...
+            2));
+
+        if all(normalizedDistance > minDistance)
+
+            selectedVirtual(end+1) = idx;
+
+        end
+
+    end
+
+    if numel(selectedVirtual) >= predictedCandidates
+
+        break;
+
+    end
+
+end
+
+%% ========================================================================
+% 12. REAL EM VERIFICATION OF PREDICTED CANDIDATES
+% =========================================================================
 
 candidateCount = ...
-    min(maxCandidates,numel(rank));
+    numel(selectedVirtual);
 
-candidateIndex = ...
-    rank(1:candidateCount);
+candidateWidth = ...
+    virtualWidth(selectedVirtual);
 
-fprintf('\nValid designs       : %d\n',numel(CW));
+candidateHeight = ...
+    virtualHeight(selectedVirtual);
 
-fprintf('Detailed candidates : %d\n',candidateCount);
+candidateLength = ...
+    virtualLength(selectedVirtual);
 
-%% ========================================================================
-% STAGE 2 - DETAILED ANALYSIS
-% =========================================================================
+candidateS11 = ...
+    NaN(candidateCount,1);
 
-fprintf('\nRunning detailed analysis...\n');
+candidateVSWR = ...
+    NaN(candidateCount,1);
 
-%% Preallocate
+fprintf('\n');
+fprintf('Predicted candidates : %d\n',candidateCount);
 
-candidateS11 = NaN(candidateCount,1);
-candidateVSWR = NaN(candidateCount,1);
-
-candidateGain = NaN(candidateCount,1);
-candidateDirectivity = NaN(candidateCount,1);
-
-candidateWidth = NaN(candidateCount,1);
-candidateHeight = NaN(candidateCount,1);
-candidateLength = NaN(candidateCount,1);
+fprintf('Running real EM verification...\n');
 
 %% ========================================================================
-% DETAILED CANDIDATE ANALYSIS
+% 13. PARALLEL VERIFICATION
 % =========================================================================
 
-if useParallel
+if parallelAvailable
 
-    parfor n = 1:candidateCount
+    parfor k = 1:candidateCount
 
-        k = candidateIndex(n);
+        tempHorn = horn;
 
-        candidateWidth(n)  = CW(k);
-        candidateHeight(n) = CH(k);
-        candidateLength(n) = CL(k);
+        tempHorn.FlareWidth = ...
+            candidateWidth(k);
 
-        candidateS11(n) = coarseS11(k);
-        candidateVSWR(n) = coarseVSWR(k);
+        tempHorn.FlareHeight = ...
+            candidateHeight(k);
 
-        % -----------------------------------------------------
-        % Early rejection
-        % -----------------------------------------------------
-
-        if candidateS11(n) > s11Threshold
-
-            continue;
-
-        end
-
-        testHorn = horn;
-
-        testHorn.FlareWidth  = candidateWidth(n);
-        testHorn.FlareHeight = candidateHeight(n);
-        testHorn.Length      = candidateLength(n);
-
-        % -----------------------------------------------------
-        % Directivity
-        % -----------------------------------------------------
+        tempHorn.Length = ...
+            candidateLength(k);
 
         try
 
-            candidateDirectivity(n) = ...
-                pattern( ...
-                testHorn,...
-                targetFreq,...
-                0,...
-                0,...
-                'Type','directivity');
+            tempS = ...
+                sparameters( ...
+                tempHorn,...
+                targetFreq);
+
+            gamma = ...
+                abs(tempS.Parameters(1,1));
+
+            candidateS11(k) = ...
+                20*log10(gamma);
+
+            if gamma < 1
+
+                candidateVSWR(k) = ...
+                    (1+gamma)/(1-gamma);
+
+            end
 
         catch
 
-            candidateDirectivity(n) = NaN;
-
-        end
-
-        % -----------------------------------------------------
-        % Gain
-        % -----------------------------------------------------
-
-        try
-
-            candidateGain(n) = ...
-                pattern( ...
-                testHorn,...
-                targetFreq,...
-                0,...
-                0,...
-                'Type','gain');
-
-        catch
-
-            candidateGain(n) = NaN;
+            candidateS11(k) = NaN;
+            candidateVSWR(k) = NaN;
 
         end
 
@@ -301,58 +435,43 @@ if useParallel
 
 else
 
-    for n = 1:candidateCount
+    for k = 1:candidateCount
 
-        k = candidateIndex(n);
+        tempHorn = horn;
 
-        candidateWidth(n)  = CW(k);
-        candidateHeight(n) = CH(k);
-        candidateLength(n) = CL(k);
+        tempHorn.FlareWidth = ...
+            candidateWidth(k);
 
-        candidateS11(n) = coarseS11(k);
-        candidateVSWR(n) = coarseVSWR(k);
+        tempHorn.FlareHeight = ...
+            candidateHeight(k);
 
-        if candidateS11(n) > s11Threshold
-
-            continue;
-
-        end
-
-        testHorn = horn;
-
-        testHorn.FlareWidth  = candidateWidth(n);
-        testHorn.FlareHeight = candidateHeight(n);
-        testHorn.Length      = candidateLength(n);
+        tempHorn.Length = ...
+            candidateLength(k);
 
         try
 
-            candidateDirectivity(n) = ...
-                pattern( ...
-                testHorn,...
-                targetFreq,...
-                0,...
-                0,...
-                'Type','directivity');
+            tempS = ...
+                sparameters( ...
+                tempHorn,...
+                targetFreq);
+
+            gamma = ...
+                abs(tempS.Parameters(1,1));
+
+            candidateS11(k) = ...
+                20*log10(gamma);
+
+            if gamma < 1
+
+                candidateVSWR(k) = ...
+                    (1+gamma)/(1-gamma);
+
+            end
 
         catch
 
-            candidateDirectivity(n) = NaN;
-
-        end
-
-        try
-
-            candidateGain(n) = ...
-                pattern( ...
-                testHorn,...
-                targetFreq,...
-                0,...
-                0,...
-                'Type','gain');
-
-        catch
-
-            candidateGain(n) = NaN;
+            candidateS11(k) = NaN;
+            candidateVSWR(k) = NaN;
 
         end
 
@@ -361,56 +480,211 @@ else
 end
 
 %% ========================================================================
-% FINAL SCORE
+% 14. SELECT BEST REAL DESIGNS
 % =========================================================================
 
-candidateScore = zeros(candidateCount,1);
+validCandidates = ...
+    isfinite(candidateS11);
 
-%% S11
+candidateWidth = candidateWidth(validCandidates);
+candidateHeight = candidateHeight(validCandidates);
+candidateLength = candidateLength(validCandidates);
 
-candidateScore = ...
-    candidateScore + ...
-    min(40,max(0,-2*candidateS11));
+candidateS11 = candidateS11(validCandidates);
+candidateVSWR = candidateVSWR(validCandidates);
 
-%% VSWR
+[~,candidateRank] = ...
+    sort(candidateS11,'ascend');
 
-candidateScore = ...
-    candidateScore + ...
-    min(20,max(0,20-10*(candidateVSWR-1)));
-
-%% Directivity
-
-validDirectivity = ...
-    isfinite(candidateDirectivity);
-
-candidateScore(validDirectivity) = ...
-    candidateScore(validDirectivity) + ...
-    min(25,max(0,...
-    candidateDirectivity(validDirectivity)));
-
-%% Gain
-
-validGain = ...
-    isfinite(candidateGain);
-
-candidateScore(validGain) = ...
-    candidateScore(validGain) + ...
-    min(15,max(0,...
-    candidateGain(validGain)));
+candidateRank = ...
+    candidateRank( ...
+    1:min(finalCandidates,...
+    numel(candidateRank)));
 
 %% ========================================================================
-% CREATE FINAL TABLE
+% 15. EXPENSIVE GAIN/DIRECTIVITY ONLY FOR FINAL DESIGNS
 % =========================================================================
 
-optimizationTable = table( ...
-    candidateWidth,...
-    candidateHeight,...
-    candidateLength,...
-    candidateS11,...
-    candidateVSWR,...
-    candidateGain,...
-    candidateDirectivity,...
-    candidateScore,...
+finalCount = ...
+    numel(candidateRank);
+
+finalWidth = ...
+    candidateWidth(candidateRank);
+
+finalHeight = ...
+    candidateHeight(candidateRank);
+
+finalLength = ...
+    candidateLength(candidateRank);
+
+finalS11 = ...
+    candidateS11(candidateRank);
+
+finalVSWR = ...
+    candidateVSWR(candidateRank);
+
+finalGain = ...
+    NaN(finalCount,1);
+
+finalDirectivity = ...
+    NaN(finalCount,1);
+
+fprintf('\nFinal detailed candidates : %d\n',finalCount);
+
+%% ========================================================================
+% 16. FINAL EXPENSIVE ANALYSIS
+% =========================================================================
+
+if parallelAvailable
+
+    parfor k = 1:finalCount
+
+        tempHorn = horn;
+
+        tempHorn.FlareWidth = ...
+            finalWidth(k);
+
+        tempHorn.FlareHeight = ...
+            finalHeight(k);
+
+        tempHorn.Length = ...
+            finalLength(k);
+
+        try
+
+            finalDirectivity(k) = ...
+                pattern( ...
+                tempHorn,...
+                targetFreq,...
+                0,...
+                0,...
+                'Type','directivity');
+
+        catch
+
+            finalDirectivity(k) = NaN;
+
+        end
+
+        try
+
+            finalGain(k) = ...
+                pattern( ...
+                tempHorn,...
+                targetFreq,...
+                0,...
+                0,...
+                'Type','gain');
+
+        catch
+
+            finalGain(k) = NaN;
+
+        end
+
+    end
+
+else
+
+    for k = 1:finalCount
+
+        tempHorn = horn;
+
+        tempHorn.FlareWidth = ...
+            finalWidth(k);
+
+        tempHorn.FlareHeight = ...
+            finalHeight(k);
+
+        tempHorn.Length = ...
+            finalLength(k);
+
+        try
+
+            finalDirectivity(k) = ...
+                pattern( ...
+                tempHorn,...
+                targetFreq,...
+                0,...
+                0,...
+                'Type','directivity');
+
+        catch
+
+            finalDirectivity(k) = NaN;
+
+        end
+
+        try
+
+            finalGain(k) = ...
+                pattern( ...
+                tempHorn,...
+                targetFreq,...
+                0,...
+                0,...
+                'Type','gain');
+
+        catch
+
+            finalGain(k) = NaN;
+
+        end
+
+    end
+
+end
+
+%% ========================================================================
+% 17. FINAL MULTI-OBJECTIVE SCORE
+% =========================================================================
+
+finalScore = zeros(finalCount,1);
+
+%% S11 = 40%
+
+finalScore = ...
+    finalScore + ...
+    min(40,max(0,-2*finalS11));
+
+%% VSWR = 20%
+
+finalScore = ...
+    finalScore + ...
+    min(20,max(0,...
+    20-10*(finalVSWR-1)));
+
+%% Directivity = 25%
+
+validD = ...
+    isfinite(finalDirectivity);
+
+finalScore(validD) = ...
+    finalScore(validD) + ...
+    min(25,max(0,finalDirectivity(validD)));
+
+%% Gain = 15%
+
+validG = ...
+    isfinite(finalGain);
+
+finalScore(validG) = ...
+    finalScore(validG) + ...
+    min(15,max(0,finalGain(validG)));
+
+%% ========================================================================
+% 18. FINAL RESULT TABLE
+% =========================================================================
+
+finalTable = table( ...
+    finalWidth,...
+    finalHeight,...
+    finalLength,...
+    finalS11,...
+    finalVSWR,...
+    finalGain,...
+    finalDirectivity,...
+    finalScore,...
     'VariableNames',...
     { ...
     'FlareWidth_m',...
@@ -423,206 +697,230 @@ optimizationTable = table( ...
     'Score' ...
     });
 
-%% ========================================================================
-% REMOVE INVALID DESIGNS
-% =========================================================================
-
-optimizationTable = ...
-    optimizationTable( ...
-    isfinite(optimizationTable.Score),:);
-
-%% ========================================================================
-% SORT
-% =========================================================================
-
-optimizationTable = ...
+finalTable = ...
     sortrows( ...
-    optimizationTable,...
+    finalTable,...
     'Score',...
     'descend');
 
 %% ========================================================================
-% BEST DESIGN
+% 19. BEST DESIGN
 % =========================================================================
 
-if ~isempty(optimizationTable)
+bestDesign = ...
+    finalTable(1,:);
 
-    bestDesign = ...
-        optimizationTable(1,:);
+fprintf('\n');
+fprintf('=====================================================================\n');
+fprintf('                    OPTIMIZED HORN\n');
+fprintf('=====================================================================\n');
 
-    fprintf('\n');
-    fprintf('=====================================================================\n');
-    fprintf('                    BEST DESIGN\n');
-    fprintf('=====================================================================\n');
+fprintf('\nWidth       : %.3f cm\n',...
+    bestDesign.FlareWidth_m*100);
 
-    fprintf('\nFlare Width  : %.3f cm\n',...
-        bestDesign.FlareWidth_m*100);
+fprintf('Height      : %.3f cm\n',...
+    bestDesign.FlareHeight_m*100);
 
-    fprintf('Flare Height : %.3f cm\n',...
-        bestDesign.FlareHeight_m*100);
+fprintf('Length      : %.3f cm\n',...
+    bestDesign.HornLength_m*100);
 
-    fprintf('Horn Length  : %.3f cm\n',...
-        bestDesign.HornLength_m*100);
+fprintf('\nS11         : %.3f dB\n',...
+    bestDesign.S11_dB);
 
-    fprintf('\nS11          : %.3f dB\n',...
-        bestDesign.S11_dB);
+fprintf('VSWR        : %.3f\n',...
+    bestDesign.VSWR);
 
-    fprintf('VSWR         : %.3f\n',...
-        bestDesign.VSWR);
+fprintf('Gain        : %.3f dBi\n',...
+    bestDesign.Gain_dBi);
 
-    fprintf('Gain         : %.3f dBi\n',...
-        bestDesign.Gain_dBi);
+fprintf('Directivity : %.3f dBi\n',...
+    bestDesign.Directivity_dBi);
 
-    fprintf('Directivity  : %.3f dBi\n',...
-        bestDesign.Directivity_dBi);
+fprintf('Score       : %.2f / 100\n',...
+    bestDesign.Score);
 
-    fprintf('Score        : %.2f / 100\n',...
-        bestDesign.Score);
+%% ========================================================================
+% 20. SAVE OPTIMIZATION DATA
+% =========================================================================
+
+initialTable = table( ...
+    initialWidth,...
+    initialHeight,...
+    initialLength,...
+    initialS11,...
+    initialVSWR,...
+    'VariableNames',...
+    { ...
+    'Width_m',...
+    'Height_m',...
+    'Length_m',...
+    'S11_dB',...
+    'VSWR' ...
+    });
+
+writetable( ...
+    initialTable,...
+    fullfile( ...
+    resultFolder,...
+    'Initial_EM_Samples.csv'));
+
+writetable( ...
+    finalTable,...
+    fullfile( ...
+    resultFolder,...
+    'Final_Optimized_Designs.csv'));
+
+%% ========================================================================
+% 21. CREATE FINAL ANTENNA
+% =========================================================================
+
+optimizedHorn = horn;
+
+optimizedHorn.FlareWidth = ...
+    bestDesign.FlareWidth_m;
+
+optimizedHorn.FlareHeight = ...
+    bestDesign.FlareHeight_m;
+
+optimizedHorn.Length = ...
+    bestDesign.HornLength_m;
+
+%% ========================================================================
+% 22. FINAL FULL-BAND VERIFICATION
+% =========================================================================
+
+fprintf('\nRunning final full-band verification...\n');
+
+optimizedS = ...
+    sparameters( ...
+    optimizedHorn,...
+    freqRange);
+
+optimizedS11 = ...
+    squeeze( ...
+    optimizedS.Parameters(1,1,:));
+
+optimizedS11dB = ...
+    20*log10(abs(optimizedS11));
+
+%% ========================================================================
+% 23. FINAL BANDWIDTH
+% =========================================================================
+
+bandIndex = ...
+    optimizedS11dB <= -10;
+
+if any(bandIndex)
+
+    optimizedBandFreq = ...
+        freqRange(bandIndex);
+
+    optimizedLower = ...
+        min(optimizedBandFreq);
+
+    optimizedUpper = ...
+        max(optimizedBandFreq);
+
+    optimizedBandwidth = ...
+        optimizedUpper-optimizedLower;
+
+    optimizedCenter = ...
+        (optimizedUpper+optimizedLower)/2;
+
+    optimizedFractionalBW = ...
+        optimizedBandwidth/optimizedCenter*100;
+
+else
+
+    optimizedLower = NaN;
+    optimizedUpper = NaN;
+    optimizedBandwidth = NaN;
+    optimizedFractionalBW = NaN;
 
 end
 
 %% ========================================================================
-% SAVE RESULTS
+% 24. ORIGINAL VS OPTIMIZED
 % =========================================================================
 
-writetable( ...
-    optimizationTable,...
+figure( ...
+    'Name','Original vs Optimized',...
+    'NumberTitle','off');
+
+plot( ...
+    freqRange/1e9,...
+    S11dB,...
+    'LineWidth',2);
+
+hold on;
+
+plot( ...
+    freqRange/1e9,...
+    optimizedS11dB,...
+    '--',...
+    'LineWidth',2);
+
+yline(-10,':');
+
+grid on;
+
+xlabel('Frequency (GHz)');
+ylabel('S_{11} (dB)');
+
+title('Original vs Optimized Horn Antenna');
+
+legend( ...
+    'Original',...
+    'Optimized',...
+    '-10 dB Target',...
+    'Location','best');
+
+saveas( ...
+    gcf,...
     fullfile( ...
     resultFolder,...
-    'Optimized_Designs.csv'));
+    'Original_vs_Optimized.png'));
 
 %% ========================================================================
-% TOP 5 DESIGNS
+% 25. FINAL GEOMETRY
 % =========================================================================
 
-topN = ...
-    min(5,height(optimizationTable));
+figure( ...
+    'Name','Final Optimized Geometry',...
+    'NumberTitle','off');
 
-topDesigns = ...
-    optimizationTable(1:topN,:);
+show(optimizedHorn);
 
-writetable( ...
-    topDesigns,...
+title('Final Optimized Rectangular Horn');
+
+saveas( ...
+    gcf,...
     fullfile( ...
     resultFolder,...
-    'Top_5_Designs.csv'));
+    'Final_Geometry.png'));
 
 %% ========================================================================
-% CREATE OPTIMIZED HORN
+% 26. FINAL RADIATION PATTERN
 % =========================================================================
 
-if ~isempty(optimizationTable)
+figure( ...
+    'Name','Final Radiation Pattern',...
+    'NumberTitle','off');
 
-    optimizedHorn = horn;
+pattern( ...
+    optimizedHorn,...
+    f0);
 
-    optimizedHorn.FlareWidth = ...
-        bestDesign.FlareWidth_m;
+title('Final Optimized Radiation Pattern');
 
-    optimizedHorn.FlareHeight = ...
-        bestDesign.FlareHeight_m;
-
-    optimizedHorn.Length = ...
-        bestDesign.HornLength_m;
-
-    %% -------------------------------------------------------------
-    % Final S11 verification
-    % --------------------------------------------------------------
-
-    optimizedS = ...
-        sparameters( ...
-        optimizedHorn,...
-        freqRange);
-
-    optimizedS11 = ...
-        squeeze(optimizedS.Parameters(1,1,:));
-
-    optimizedS11dB = ...
-        20*log10(abs(optimizedS11));
-
-    %% -------------------------------------------------------------
-    % Optimized geometry
-    % --------------------------------------------------------------
-
-    figure( ...
-        'Name','Optimized Geometry',...
-        'NumberTitle','off');
-
-    show(optimizedHorn);
-
-    title('Optimized Rectangular Horn');
-
-    saveas( ...
-        gcf,...
-        fullfile( ...
-        resultFolder,...
-        'Optimized_Geometry.png'));
-
-    %% -------------------------------------------------------------
-    % Optimized radiation
-    % --------------------------------------------------------------
-
-    figure( ...
-        'Name','Optimized Radiation',...
-        'NumberTitle','off');
-
-    pattern( ...
-        optimizedHorn,...
-        f0);
-
-    title('Optimized Radiation Pattern at 10 GHz');
-
-    saveas( ...
-        gcf,...
-        fullfile( ...
-        resultFolder,...
-        'Optimized_Radiation.png'));
-
-    %% -------------------------------------------------------------
-    % Original vs optimized S11
-    % --------------------------------------------------------------
-
-    figure( ...
-        'Name','S11 Comparison',...
-        'NumberTitle','off');
-
-    plot( ...
-        freqRange/1e9,...
-        S11dB,...
-        'LineWidth',2);
-
-    hold on;
-
-    plot( ...
-        freqRange/1e9,...
-        optimizedS11dB,...
-        '--',...
-        'LineWidth',2);
-
-    yline(-10,':');
-
-    grid on;
-
-    xlabel('Frequency (GHz)');
-    ylabel('S_{11} (dB)');
-
-    title('Original vs Optimized S_{11}');
-
-    legend( ...
-        'Original',...
-        'Optimized',...
-        '-10 dB Target',...
-        'Location','best');
-
-    saveas( ...
-        gcf,...
-        fullfile( ...
-        resultFolder,...
-        'Original_vs_Optimized_S11.png'));
-
-end
+saveas( ...
+    gcf,...
+    fullfile( ...
+    resultFolder,...
+    'Final_Radiation_Pattern.png'));
 
 %% ========================================================================
-% PERFORMANCE SUMMARY
+% 27. FINAL REPORT
 % =========================================================================
 
 optimizationTime = ...
@@ -630,28 +928,58 @@ optimizationTime = ...
 
 fprintf('\n');
 fprintf('=====================================================================\n');
-fprintf('                 EFFICIENCY SUMMARY\n');
+fprintf('                    EFFICIENCY REPORT\n');
 fprintf('=====================================================================\n');
 
-fprintf('Total coarse designs       : %d\n',numCoarse);
+fprintf('\nInitial real EM simulations : %d\n',...
+    initialSamples);
 
-fprintf('S11 simulations            : %d\n',numCoarse);
+fprintf('Virtual predictions         : %d\n',...
+    virtualSamples);
 
-fprintf('Detailed candidates        : %d\n',candidateCount);
+fprintf('Candidate EM simulations   : %d\n',...
+    candidateCount);
 
-fprintf('S11 threshold              : %.1f dB\n',s11Threshold);
+fprintf('Final expensive analyses  : %d\n',...
+    finalCount);
 
-fprintf('Optimization execution     : %.2f seconds\n',...
+fprintf('Optimization time          : %.2f seconds\n',...
     optimizationTime);
 
-if useParallel
+fprintf('\nFinal Design\n');
+fprintf('---------------------------------------------------------------------\n');
 
-    fprintf('Execution mode             : PARALLEL\n');
+fprintf('Width       : %.3f cm\n',...
+    bestDesign.FlareWidth_m*100);
 
-else
+fprintf('Height      : %.3f cm\n',...
+    bestDesign.FlareHeight_m*100);
 
-    fprintf('Execution mode             : SERIAL\n');
+fprintf('Length      : %.3f cm\n',...
+    bestDesign.HornLength_m*100);
+
+fprintf('S11         : %.3f dB\n',...
+    bestDesign.S11_dB);
+
+fprintf('VSWR        : %.3f\n',...
+    bestDesign.VSWR);
+
+fprintf('Gain        : %.3f dBi\n',...
+    bestDesign.Gain_dBi);
+
+fprintf('Directivity : %.3f dBi\n',...
+    bestDesign.Directivity_dBi);
+
+if ~isnan(optimizedBandwidth)
+
+    fprintf('\n-10 dB Bandwidth : %.3f GHz\n',...
+        optimizedBandwidth/1e9);
+
+    fprintf('Fractional BW    : %.2f %%\n',...
+        optimizedFractionalBW);
 
 end
 
+fprintf('\n=====================================================================\n');
+fprintf('              OPTIMIZATION COMPLETED SUCCESSFULLY\n');
 fprintf('=====================================================================\n');
