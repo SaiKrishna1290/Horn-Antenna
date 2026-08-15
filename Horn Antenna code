@@ -1,219 +1,217 @@
 %% ========================================================================
-% 8A. SURROGATE MODEL RELIABILITY VALIDATION
+% 33. MONTE-CARLO MANUFACTURING TOLERANCE ANALYSIS
 % =========================================================================
 
 fprintf('\n');
 fprintf('=====================================================================\n');
-fprintf('             SURROGATE MODEL RELIABILITY CHECK\n');
+fprintf('           MONTE-CARLO ROBUSTNESS ANALYSIS\n');
 fprintf('=====================================================================\n');
 
-%% ------------------------------------------------------------------------
-% 1. TRAINING PREDICTION
-% -------------------------------------------------------------------------
+monteCarloTimer = tic;
 
-predictedTraining = A * beta;
+%% Number of random samples
 
-%% Prediction errors
+numMonteCarlo = 50;
 
-predictionError = ...
-    Y - predictedTraining;
+%% Manufacturing tolerance
 
-RMSE = ...
-    sqrt(mean(predictionError.^2));
+tolerance = 0.02;       % ±2%
 
-MAE = ...
-    mean(abs(predictionError));
+fprintf('\nMonte-Carlo samples : %d\n',numMonteCarlo);
+fprintf('Dimensional tolerance : ±%.1f %%\n',...
+    tolerance*100);
 
-%% R-squared
+%% Frequency for robustness test
 
-SST = ...
-    sum((Y-mean(Y)).^2);
+mcFrequency = f0;
 
-SSE = ...
-    sum(predictionError.^2);
+%% Preallocate
 
-if SST > 0
+mcWidth = NaN(numMonteCarlo,1);
+mcHeight = NaN(numMonteCarlo,1);
+mcLength = NaN(numMonteCarlo,1);
 
-    R2 = ...
-        1 - SSE/SST;
+mcS11 = NaN(numMonteCarlo,1);
+mcVSWR = NaN(numMonteCarlo,1);
+
+%% Random seed for reproducibility
+
+rng(25,'twister');
+
+%% Random dimensional variations
+
+mcWidth = ...
+    bestDesign.FlareWidth_m .* ...
+    (1 + tolerance*(2*rand(numMonteCarlo,1)-1));
+
+mcHeight = ...
+    bestDesign.FlareHeight_m .* ...
+    (1 + tolerance*(2*rand(numMonteCarlo,1)-1));
+
+mcLength = ...
+    bestDesign.HornLength_m .* ...
+    (1 + tolerance*(2*rand(numMonteCarlo,1)-1));
+
+%% ========================================================================
+% RUN MONTE-CARLO EM SIMULATIONS
+% =========================================================================
+
+fprintf('\nRunning tolerance simulations...\n');
+
+if parallelAvailable
+
+    parfor k = 1:numMonteCarlo
+
+        testHorn = horn;
+
+        testHorn.FlareWidth = mcWidth(k);
+        testHorn.FlareHeight = mcHeight(k);
+        testHorn.Length = mcLength(k);
+
+        try
+
+            tempS = ...
+                sparameters(testHorn,mcFrequency);
+
+            gamma = ...
+                abs(tempS.Parameters(1,1));
+
+            mcS11(k) = ...
+                20*log10(gamma);
+
+            if gamma < 1
+
+                mcVSWR(k) = ...
+                    (1+gamma)/(1-gamma);
+
+            end
+
+        catch
+
+            mcS11(k) = NaN;
+            mcVSWR(k) = NaN;
+
+        end
+
+    end
 
 else
 
-    R2 = NaN;
+    for k = 1:numMonteCarlo
 
-end
+        testHorn = horn;
 
-%% Maximum error
+        testHorn.FlareWidth = mcWidth(k);
+        testHorn.FlareHeight = mcHeight(k);
+        testHorn.Length = mcLength(k);
 
-maxError = ...
-    max(abs(predictionError));
+        try
 
-%% ------------------------------------------------------------------------
-% DISPLAY MODEL QUALITY
-% -------------------------------------------------------------------------
+            tempS = ...
+                sparameters(testHorn,mcFrequency);
 
-fprintf('\nSurrogate Model Quality\n');
-fprintf('-------------------------------------\n');
+            gamma = ...
+                abs(tempS.Parameters(1,1));
 
-fprintf('RMSE          : %.4f dB\n',RMSE);
-fprintf('MAE           : %.4f dB\n',MAE);
-fprintf('Maximum Error : %.4f dB\n',maxError);
-fprintf('R^2           : %.4f\n',R2);
+            mcS11(k) = ...
+                20*log10(gamma);
 
-%% ------------------------------------------------------------------------
-% MODEL ACCEPTANCE
-% -------------------------------------------------------------------------
+            if gamma < 1
 
-if R2 >= 0.90 && RMSE <= 1.0
+                mcVSWR(k) = ...
+                    (1+gamma)/(1-gamma);
 
-    surrogateReliable = true;
+            end
 
-    fprintf('\nSTATUS : SURROGATE MODEL ACCEPTED\n');
+        catch
 
-elseif R2 >= 0.75 && RMSE <= 2.0
+            mcS11(k) = NaN;
+            mcVSWR(k) = NaN;
 
-    surrogateReliable = true;
+        end
 
-    fprintf('\nSTATUS : SURROGATE MODEL ACCEPTED WITH CAUTION\n');
-
-else
-
-    surrogateReliable = false;
-
-    fprintf('\nSTATUS : SURROGATE MODEL NOT RELIABLE\n');
+    end
 
 end
 
 %% ========================================================================
-% 8B. SURROGATE VALIDATION PLOT
+% REMOVE INVALID RESULTS
 % =========================================================================
 
-figure( ...
-    'Name','Surrogate Validation',...
-    'NumberTitle','off');
+validMC = ...
+    isfinite(mcS11) & ...
+    isfinite(mcVSWR);
 
-scatter( ...
-    Y,...
-    predictedTraining,...
-    45,...
-    'filled');
+validS11 = ...
+    mcS11(validMC);
 
-hold on;
-
-minValue = ...
-    min([Y;predictedTraining]);
-
-maxValue = ...
-    max([Y;predictedTraining]);
-
-plot( ...
-    [minValue maxValue],...
-    [minValue maxValue],...
-    '--',...
-    'LineWidth',2);
-
-grid on;
-
-xlabel('Actual S_{11} (dB)');
-ylabel('Predicted S_{11} (dB)');
-
-title('Surrogate Model: Actual vs Predicted');
-
-legend( ...
-    'Training Samples',...
-    'Ideal Prediction',...
-    'Location','best');
-
-saveas( ...
-    gcf,...
-    fullfile( ...
-    resultFolder,...
-    'Surrogate_Validation.png'));
+validVSWR = ...
+    mcVSWR(validMC);
 
 %% ========================================================================
-% 8C. CROSS-VALIDATION
+% STATISTICS
 % =========================================================================
 
-fprintf('\nRunning leave-one-out validation...\n');
+meanS11 = mean(validS11);
+stdS11 = std(validS11);
 
-N = size(X,1);
+worstS11 = max(validS11);
+bestS11 = min(validS11);
 
-LOOerror = NaN(N,1);
+meanVSWR = mean(validVSWR);
+stdVSWR = std(validVSWR);
 
-for i = 1:N
+worstVSWR = max(validVSWR);
+bestVSWR = min(validVSWR);
 
-    trainingIndex = true(N,1);
+%% ========================================================================
+% ROBUSTNESS PERCENTAGE
+% =========================================================================
 
-    trainingIndex(i) = false;
+s11Success = ...
+    validS11 <= -10;
 
-    Xtrain = Xnorm(trainingIndex,:);
-    Ytrain = Y(trainingIndex);
+vswrSuccess = ...
+    validVSWR <= 2;
 
-    Wtrain = Xtrain(:,1);
-    Htrain = Xtrain(:,2);
-    Ltrain = Xtrain(:,3);
+s11Robustness = ...
+    mean(s11Success)*100;
 
-    Atrain = [ ...
-        ones(size(Wtrain)),...
-        Wtrain,...
-        Htrain,...
-        Ltrain,...
-        Wtrain.^2,...
-        Htrain.^2,...
-        Ltrain.^2,...
-        Wtrain.*Htrain,...
-        Wtrain.*Ltrain,...
-        Htrain.*Ltrain];
+vswrRobustness = ...
+    mean(vswrSuccess)*100;
 
-    betaLOO = ...
-        Atrain\Ytrain;
+%% ========================================================================
+% DISPLAY RESULTS
+% =========================================================================
 
-    %% Test point
-
-    Wtest = Xnorm(i,1);
-    Htest = Xnorm(i,2);
-    Ltest = Xnorm(i,3);
-
-    Atest = [ ...
-        1,...
-        Wtest,...
-        Htest,...
-        Ltest,...
-        Wtest^2,...
-        Htest^2,...
-        Ltest^2,...
-        Wtest*Htest,...
-        Wtest*Ltest,...
-        Htest*Ltest];
-
-    prediction = ...
-        Atest*betaLOO;
-
-    LOOerror(i) = ...
-        Y(i)-prediction;
-
-end
-
-%% Cross-validation metrics
-
-LOO_RMSE = ...
-    sqrt(mean(LOOerror.^2));
-
-LOO_MAE = ...
-    mean(abs(LOOerror));
-
-fprintf('\nCross-validation results\n');
+fprintf('\n');
+fprintf('Monte-Carlo Results\n');
 fprintf('-------------------------------------\n');
 
-fprintf('LOO RMSE : %.4f dB\n',LOO_RMSE);
-fprintf('LOO MAE  : %.4f dB\n',LOO_MAE);
+fprintf('Valid simulations : %d / %d\n',...
+    sum(validMC),numMonteCarlo);
 
-if LOO_RMSE <= 1.5
+fprintf('\nS11 Statistics\n');
 
-    fprintf('Cross-validation : PASS\n');
+fprintf('Mean S11     : %.3f dB\n',meanS11);
+fprintf('Std. Dev.    : %.3f dB\n',stdS11);
+fprintf('Best S11     : %.3f dB\n',bestS11);
+fprintf('Worst S11    : %.3f dB\n',worstS11);
 
-else
+fprintf('\nVSWR Statistics\n');
 
-    fprintf('Cross-validation : WARNING\n');
+fprintf('Mean VSWR    : %.3f\n',meanVSWR);
+fprintf('Std. Dev.    : %.3f\n',stdVSWR);
+fprintf('Best VSWR    : %.3f\n',bestVSWR);
+fprintf('Worst VSWR   : %.3f\n',worstVSWR);
 
-end
+fprintf('\nRobustness\n');
+
+fprintf('S11 <= -10 dB : %.1f %%\n',...
+    s11Robustness);
+
+fprintf('VSWR <= 2      : %.1f %%\n',...
+    vswrRobustness);
+
+fprintf('\nMonte-Carlo time : %.2f seconds\n',...
+    toc(monteCarloTimer));
