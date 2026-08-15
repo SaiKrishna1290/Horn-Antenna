@@ -1,985 +1,219 @@
 %% ========================================================================
-% 56. ULTRA-EFFICIENT SURROGATE-ASSISTED OPTIMIZATION
+% 8A. SURROGATE MODEL RELIABILITY VALIDATION
 % =========================================================================
 
 fprintf('\n');
 fprintf('=====================================================================\n');
-fprintf('        ULTRA-EFFICIENT HORN ANTENNA OPTIMIZATION\n');
+fprintf('             SURROGATE MODEL RELIABILITY CHECK\n');
 fprintf('=====================================================================\n');
 
-optimizationTimer = tic;
+%% ------------------------------------------------------------------------
+% 1. TRAINING PREDICTION
+% -------------------------------------------------------------------------
 
-%% ========================================================================
-% 1. OPTIMIZATION CONFIGURATION
-% =========================================================================
+predictedTraining = A * beta;
 
-targetFreq = f0;
+%% Prediction errors
 
-% Design limits
-widthMin  = 0.08;
-widthMax  = 0.12;
+predictionError = ...
+    Y - predictedTraining;
 
-heightMin = 0.05;
-heightMax = 0.09;
+RMSE = ...
+    sqrt(mean(predictionError.^2));
 
-lengthMin = 0.10;
-lengthMax = 0.20;
+MAE = ...
+    mean(abs(predictionError));
 
-% Number of real EM simulations
-initialSamples = 30;
+%% R-squared
 
-% Number of predicted candidates
-predictedCandidates = 15;
+SST = ...
+    sum((Y-mean(Y)).^2);
 
-% Final detailed candidates
-finalCandidates = 5;
+SSE = ...
+    sum(predictionError.^2);
 
-fprintf('\nOptimization configuration:\n');
+if SST > 0
 
-fprintf('Initial EM samples : %d\n',initialSamples);
-fprintf('Predicted designs  : %d\n',predictedCandidates);
-fprintf('Final designs      : %d\n',finalCandidates);
-
-%% ========================================================================
-% 2. GENERATE INITIAL DESIGN SPACE
-% =========================================================================
-
-rng(10,'twister');
-
-initialWidth = ...
-    widthMin + ...
-    (widthMax-widthMin)*rand(initialSamples,1);
-
-initialHeight = ...
-    heightMin + ...
-    (heightMax-heightMin)*rand(initialSamples,1);
-
-initialLength = ...
-    lengthMin + ...
-    (lengthMax-lengthMin)*rand(initialSamples,1);
-
-%% ========================================================================
-% 3. PREALLOCATE INITIAL RESULTS
-% =========================================================================
-
-initialS11  = NaN(initialSamples,1);
-initialVSWR = NaN(initialSamples,1);
-
-%% ========================================================================
-% 4. INITIAL ELECTROMAGNETIC SCREENING
-% =========================================================================
-
-fprintf('\n');
-fprintf('Running initial electromagnetic simulations...\n');
-
-%% Check parallel capability
-
-parallelAvailable = ...
-    license('test','Distrib_Computing_Toolbox');
-
-%% ========================================================================
-% 5. PARALLEL INITIAL SIMULATION
-% =========================================================================
-
-if parallelAvailable
-
-    fprintf('Parallel execution enabled.\n');
-
-    pool = gcp('nocreate');
-
-    if isempty(pool)
-
-        parpool;
-
-    end
-
-    parfor k = 1:initialSamples
-
-        tempHorn = horn;
-
-        tempHorn.FlareWidth = ...
-            initialWidth(k);
-
-        tempHorn.FlareHeight = ...
-            initialHeight(k);
-
-        tempHorn.Length = ...
-            initialLength(k);
-
-        try
-
-            tempS = ...
-                sparameters( ...
-                tempHorn,...
-                targetFreq);
-
-            gamma = ...
-                abs(tempS.Parameters(1,1));
-
-            initialS11(k) = ...
-                20*log10(gamma);
-
-            if gamma < 1
-
-                initialVSWR(k) = ...
-                    (1+gamma)/(1-gamma);
-
-            end
-
-        catch
-
-            initialS11(k) = NaN;
-            initialVSWR(k) = NaN;
-
-        end
-
-    end
+    R2 = ...
+        1 - SSE/SST;
 
 else
 
-    fprintf('Parallel toolbox unavailable.\n');
-    fprintf('Using serial execution.\n');
-
-    for k = 1:initialSamples
-
-        tempHorn = horn;
-
-        tempHorn.FlareWidth = ...
-            initialWidth(k);
-
-        tempHorn.FlareHeight = ...
-            initialHeight(k);
-
-        tempHorn.Length = ...
-            initialLength(k);
-
-        try
-
-            tempS = ...
-                sparameters( ...
-                tempHorn,...
-                targetFreq);
-
-            gamma = ...
-                abs(tempS.Parameters(1,1));
-
-            initialS11(k) = ...
-                20*log10(gamma);
-
-            if gamma < 1
-
-                initialVSWR(k) = ...
-                    (1+gamma)/(1-gamma);
-
-            end
-
-        catch
-
-            initialS11(k) = NaN;
-            initialVSWR(k) = NaN;
-
-        end
-
-    end
+    R2 = NaN;
 
 end
 
-%% ========================================================================
-% 6. REMOVE FAILED SIMULATIONS
-% =========================================================================
+%% Maximum error
 
-valid = ...
-    isfinite(initialS11) & ...
-    isfinite(initialVSWR);
+maxError = ...
+    max(abs(predictionError));
 
-initialWidth  = initialWidth(valid);
-initialHeight = initialHeight(valid);
-initialLength = initialLength(valid);
+%% ------------------------------------------------------------------------
+% DISPLAY MODEL QUALITY
+% -------------------------------------------------------------------------
 
-initialS11  = initialS11(valid);
-initialVSWR = initialVSWR(valid);
+fprintf('\nSurrogate Model Quality\n');
+fprintf('-------------------------------------\n');
 
-fprintf('\nSuccessful simulations : %d / %d\n',...
-    sum(valid),initialSamples);
+fprintf('RMSE          : %.4f dB\n',RMSE);
+fprintf('MAE           : %.4f dB\n',MAE);
+fprintf('Maximum Error : %.4f dB\n',maxError);
+fprintf('R^2           : %.4f\n',R2);
 
-%% ========================================================================
-% 7. BUILD SURROGATE MODEL
-% =========================================================================
+%% ------------------------------------------------------------------------
+% MODEL ACCEPTANCE
+% -------------------------------------------------------------------------
 
-fprintf('\nBuilding S11 surrogate model...\n');
+if R2 >= 0.90 && RMSE <= 1.0
 
-X = [ ...
-    initialWidth,...
-    initialHeight,...
-    initialLength];
+    surrogateReliable = true;
 
-Y = initialS11;
+    fprintf('\nSTATUS : SURROGATE MODEL ACCEPTED\n');
 
-%% Normalize input variables
+elseif R2 >= 0.75 && RMSE <= 2.0
 
-Xmean = mean(X,1);
-Xstd  = std(X,0,1);
+    surrogateReliable = true;
 
-Xnorm = ...
-    (X-Xmean)./Xstd;
-
-%% ========================================================================
-% 8. USE LOCAL POLYNOMIAL SURROGATE
-% =========================================================================
-
-% Quadratic regression:
-%
-% S11 =
-% a0 + a1W + a2H + a3L
-%    + a4W^2 + a5H^2 + a6L^2
-%    + a7WH + a8WL + a9HL
-
-Wn = Xnorm(:,1);
-Hn = Xnorm(:,2);
-Ln = Xnorm(:,3);
-
-A = [ ...
-    ones(size(Wn)),...
-    Wn,...
-    Hn,...
-    Ln,...
-    Wn.^2,...
-    Hn.^2,...
-    Ln.^2,...
-    Wn.*Hn,...
-    Wn.*Ln,...
-    Hn.*Ln];
-
-beta = ...
-    A\Y;
-
-fprintf('Surrogate model created.\n');
-
-%% ========================================================================
-% 9. GENERATE LARGE VIRTUAL DESIGN SPACE
-% =========================================================================
-
-virtualSamples = 10000;
-
-virtualWidth = ...
-    widthMin + ...
-    (widthMax-widthMin)*rand(virtualSamples,1);
-
-virtualHeight = ...
-    heightMin + ...
-    (heightMax-heightMin)*rand(virtualSamples,1);
-
-virtualLength = ...
-    lengthMin + ...
-    (lengthMax-lengthMin)*rand(virtualSamples,1);
-
-%% ========================================================================
-% 10. PREDICT S11 WITHOUT EM SIMULATION
-% =========================================================================
-
-VnW = ...
-    (virtualWidth-Xmean(1))/Xstd(1);
-
-VnH = ...
-    (virtualHeight-Xmean(2))/Xstd(2);
-
-VnL = ...
-    (virtualLength-Xmean(3))/Xstd(3);
-
-Avirtual = [ ...
-    ones(virtualSamples,1),...
-    VnW,...
-    VnH,...
-    VnL,...
-    VnW.^2,...
-    VnH.^2,...
-    VnL.^2,...
-    VnW.*VnH,...
-    VnW.*VnL,...
-    VnH.*VnL];
-
-predictedS11 = ...
-    Avirtual*beta;
-
-%% ========================================================================
-% 11. RANK VIRTUAL DESIGNS
-% =========================================================================
-
-[~,virtualRank] = ...
-    sort(predictedS11,'ascend');
-
-%% Avoid selecting extremely similar designs
-
-selectedVirtual = [];
-
-minDistance = 0.05;
-
-for k = 1:length(virtualRank)
-
-    idx = virtualRank(k);
-
-    candidate = [ ...
-        virtualWidth(idx),...
-        virtualHeight(idx),...
-        virtualLength(idx)];
-
-    if isempty(selectedVirtual)
-
-        selectedVirtual = idx;
-
-    else
-
-        selectedPoints = [ ...
-            virtualWidth(selectedVirtual),...
-            virtualHeight(selectedVirtual),...
-            virtualLength(selectedVirtual)];
-
-        normalizedDistance = ...
-            sqrt(sum( ...
-            ((selectedPoints-candidate)./[ ...
-            widthMax-widthMin,...
-            heightMax-heightMin,...
-            lengthMax-lengthMin]).^2,...
-            2));
-
-        if all(normalizedDistance > minDistance)
-
-            selectedVirtual(end+1) = idx;
-
-        end
-
-    end
-
-    if numel(selectedVirtual) >= predictedCandidates
-
-        break;
-
-    end
-
-end
-
-%% ========================================================================
-% 12. REAL EM VERIFICATION OF PREDICTED CANDIDATES
-% =========================================================================
-
-candidateCount = ...
-    numel(selectedVirtual);
-
-candidateWidth = ...
-    virtualWidth(selectedVirtual);
-
-candidateHeight = ...
-    virtualHeight(selectedVirtual);
-
-candidateLength = ...
-    virtualLength(selectedVirtual);
-
-candidateS11 = ...
-    NaN(candidateCount,1);
-
-candidateVSWR = ...
-    NaN(candidateCount,1);
-
-fprintf('\n');
-fprintf('Predicted candidates : %d\n',candidateCount);
-
-fprintf('Running real EM verification...\n');
-
-%% ========================================================================
-% 13. PARALLEL VERIFICATION
-% =========================================================================
-
-if parallelAvailable
-
-    parfor k = 1:candidateCount
-
-        tempHorn = horn;
-
-        tempHorn.FlareWidth = ...
-            candidateWidth(k);
-
-        tempHorn.FlareHeight = ...
-            candidateHeight(k);
-
-        tempHorn.Length = ...
-            candidateLength(k);
-
-        try
-
-            tempS = ...
-                sparameters( ...
-                tempHorn,...
-                targetFreq);
-
-            gamma = ...
-                abs(tempS.Parameters(1,1));
-
-            candidateS11(k) = ...
-                20*log10(gamma);
-
-            if gamma < 1
-
-                candidateVSWR(k) = ...
-                    (1+gamma)/(1-gamma);
-
-            end
-
-        catch
-
-            candidateS11(k) = NaN;
-            candidateVSWR(k) = NaN;
-
-        end
-
-    end
+    fprintf('\nSTATUS : SURROGATE MODEL ACCEPTED WITH CAUTION\n');
 
 else
 
-    for k = 1:candidateCount
+    surrogateReliable = false;
 
-        tempHorn = horn;
-
-        tempHorn.FlareWidth = ...
-            candidateWidth(k);
-
-        tempHorn.FlareHeight = ...
-            candidateHeight(k);
-
-        tempHorn.Length = ...
-            candidateLength(k);
-
-        try
-
-            tempS = ...
-                sparameters( ...
-                tempHorn,...
-                targetFreq);
-
-            gamma = ...
-                abs(tempS.Parameters(1,1));
-
-            candidateS11(k) = ...
-                20*log10(gamma);
-
-            if gamma < 1
-
-                candidateVSWR(k) = ...
-                    (1+gamma)/(1-gamma);
-
-            end
-
-        catch
-
-            candidateS11(k) = NaN;
-            candidateVSWR(k) = NaN;
-
-        end
-
-    end
+    fprintf('\nSTATUS : SURROGATE MODEL NOT RELIABLE\n');
 
 end
 
 %% ========================================================================
-% 14. SELECT BEST REAL DESIGNS
-% =========================================================================
-
-validCandidates = ...
-    isfinite(candidateS11);
-
-candidateWidth = candidateWidth(validCandidates);
-candidateHeight = candidateHeight(validCandidates);
-candidateLength = candidateLength(validCandidates);
-
-candidateS11 = candidateS11(validCandidates);
-candidateVSWR = candidateVSWR(validCandidates);
-
-[~,candidateRank] = ...
-    sort(candidateS11,'ascend');
-
-candidateRank = ...
-    candidateRank( ...
-    1:min(finalCandidates,...
-    numel(candidateRank)));
-
-%% ========================================================================
-% 15. EXPENSIVE GAIN/DIRECTIVITY ONLY FOR FINAL DESIGNS
-% =========================================================================
-
-finalCount = ...
-    numel(candidateRank);
-
-finalWidth = ...
-    candidateWidth(candidateRank);
-
-finalHeight = ...
-    candidateHeight(candidateRank);
-
-finalLength = ...
-    candidateLength(candidateRank);
-
-finalS11 = ...
-    candidateS11(candidateRank);
-
-finalVSWR = ...
-    candidateVSWR(candidateRank);
-
-finalGain = ...
-    NaN(finalCount,1);
-
-finalDirectivity = ...
-    NaN(finalCount,1);
-
-fprintf('\nFinal detailed candidates : %d\n',finalCount);
-
-%% ========================================================================
-% 16. FINAL EXPENSIVE ANALYSIS
-% =========================================================================
-
-if parallelAvailable
-
-    parfor k = 1:finalCount
-
-        tempHorn = horn;
-
-        tempHorn.FlareWidth = ...
-            finalWidth(k);
-
-        tempHorn.FlareHeight = ...
-            finalHeight(k);
-
-        tempHorn.Length = ...
-            finalLength(k);
-
-        try
-
-            finalDirectivity(k) = ...
-                pattern( ...
-                tempHorn,...
-                targetFreq,...
-                0,...
-                0,...
-                'Type','directivity');
-
-        catch
-
-            finalDirectivity(k) = NaN;
-
-        end
-
-        try
-
-            finalGain(k) = ...
-                pattern( ...
-                tempHorn,...
-                targetFreq,...
-                0,...
-                0,...
-                'Type','gain');
-
-        catch
-
-            finalGain(k) = NaN;
-
-        end
-
-    end
-
-else
-
-    for k = 1:finalCount
-
-        tempHorn = horn;
-
-        tempHorn.FlareWidth = ...
-            finalWidth(k);
-
-        tempHorn.FlareHeight = ...
-            finalHeight(k);
-
-        tempHorn.Length = ...
-            finalLength(k);
-
-        try
-
-            finalDirectivity(k) = ...
-                pattern( ...
-                tempHorn,...
-                targetFreq,...
-                0,...
-                0,...
-                'Type','directivity');
-
-        catch
-
-            finalDirectivity(k) = NaN;
-
-        end
-
-        try
-
-            finalGain(k) = ...
-                pattern( ...
-                tempHorn,...
-                targetFreq,...
-                0,...
-                0,...
-                'Type','gain');
-
-        catch
-
-            finalGain(k) = NaN;
-
-        end
-
-    end
-
-end
-
-%% ========================================================================
-% 17. FINAL MULTI-OBJECTIVE SCORE
-% =========================================================================
-
-finalScore = zeros(finalCount,1);
-
-%% S11 = 40%
-
-finalScore = ...
-    finalScore + ...
-    min(40,max(0,-2*finalS11));
-
-%% VSWR = 20%
-
-finalScore = ...
-    finalScore + ...
-    min(20,max(0,...
-    20-10*(finalVSWR-1)));
-
-%% Directivity = 25%
-
-validD = ...
-    isfinite(finalDirectivity);
-
-finalScore(validD) = ...
-    finalScore(validD) + ...
-    min(25,max(0,finalDirectivity(validD)));
-
-%% Gain = 15%
-
-validG = ...
-    isfinite(finalGain);
-
-finalScore(validG) = ...
-    finalScore(validG) + ...
-    min(15,max(0,finalGain(validG)));
-
-%% ========================================================================
-% 18. FINAL RESULT TABLE
-% =========================================================================
-
-finalTable = table( ...
-    finalWidth,...
-    finalHeight,...
-    finalLength,...
-    finalS11,...
-    finalVSWR,...
-    finalGain,...
-    finalDirectivity,...
-    finalScore,...
-    'VariableNames',...
-    { ...
-    'FlareWidth_m',...
-    'FlareHeight_m',...
-    'HornLength_m',...
-    'S11_dB',...
-    'VSWR',...
-    'Gain_dBi',...
-    'Directivity_dBi',...
-    'Score' ...
-    });
-
-finalTable = ...
-    sortrows( ...
-    finalTable,...
-    'Score',...
-    'descend');
-
-%% ========================================================================
-% 19. BEST DESIGN
-% =========================================================================
-
-bestDesign = ...
-    finalTable(1,:);
-
-fprintf('\n');
-fprintf('=====================================================================\n');
-fprintf('                    OPTIMIZED HORN\n');
-fprintf('=====================================================================\n');
-
-fprintf('\nWidth       : %.3f cm\n',...
-    bestDesign.FlareWidth_m*100);
-
-fprintf('Height      : %.3f cm\n',...
-    bestDesign.FlareHeight_m*100);
-
-fprintf('Length      : %.3f cm\n',...
-    bestDesign.HornLength_m*100);
-
-fprintf('\nS11         : %.3f dB\n',...
-    bestDesign.S11_dB);
-
-fprintf('VSWR        : %.3f\n',...
-    bestDesign.VSWR);
-
-fprintf('Gain        : %.3f dBi\n',...
-    bestDesign.Gain_dBi);
-
-fprintf('Directivity : %.3f dBi\n',...
-    bestDesign.Directivity_dBi);
-
-fprintf('Score       : %.2f / 100\n',...
-    bestDesign.Score);
-
-%% ========================================================================
-% 20. SAVE OPTIMIZATION DATA
-% =========================================================================
-
-initialTable = table( ...
-    initialWidth,...
-    initialHeight,...
-    initialLength,...
-    initialS11,...
-    initialVSWR,...
-    'VariableNames',...
-    { ...
-    'Width_m',...
-    'Height_m',...
-    'Length_m',...
-    'S11_dB',...
-    'VSWR' ...
-    });
-
-writetable( ...
-    initialTable,...
-    fullfile( ...
-    resultFolder,...
-    'Initial_EM_Samples.csv'));
-
-writetable( ...
-    finalTable,...
-    fullfile( ...
-    resultFolder,...
-    'Final_Optimized_Designs.csv'));
-
-%% ========================================================================
-% 21. CREATE FINAL ANTENNA
-% =========================================================================
-
-optimizedHorn = horn;
-
-optimizedHorn.FlareWidth = ...
-    bestDesign.FlareWidth_m;
-
-optimizedHorn.FlareHeight = ...
-    bestDesign.FlareHeight_m;
-
-optimizedHorn.Length = ...
-    bestDesign.HornLength_m;
-
-%% ========================================================================
-% 22. FINAL FULL-BAND VERIFICATION
-% =========================================================================
-
-fprintf('\nRunning final full-band verification...\n');
-
-optimizedS = ...
-    sparameters( ...
-    optimizedHorn,...
-    freqRange);
-
-optimizedS11 = ...
-    squeeze( ...
-    optimizedS.Parameters(1,1,:));
-
-optimizedS11dB = ...
-    20*log10(abs(optimizedS11));
-
-%% ========================================================================
-% 23. FINAL BANDWIDTH
-% =========================================================================
-
-bandIndex = ...
-    optimizedS11dB <= -10;
-
-if any(bandIndex)
-
-    optimizedBandFreq = ...
-        freqRange(bandIndex);
-
-    optimizedLower = ...
-        min(optimizedBandFreq);
-
-    optimizedUpper = ...
-        max(optimizedBandFreq);
-
-    optimizedBandwidth = ...
-        optimizedUpper-optimizedLower;
-
-    optimizedCenter = ...
-        (optimizedUpper+optimizedLower)/2;
-
-    optimizedFractionalBW = ...
-        optimizedBandwidth/optimizedCenter*100;
-
-else
-
-    optimizedLower = NaN;
-    optimizedUpper = NaN;
-    optimizedBandwidth = NaN;
-    optimizedFractionalBW = NaN;
-
-end
-
-%% ========================================================================
-% 24. ORIGINAL VS OPTIMIZED
+% 8B. SURROGATE VALIDATION PLOT
 % =========================================================================
 
 figure( ...
-    'Name','Original vs Optimized',...
+    'Name','Surrogate Validation',...
     'NumberTitle','off');
 
-plot( ...
-    freqRange/1e9,...
-    S11dB,...
-    'LineWidth',2);
+scatter( ...
+    Y,...
+    predictedTraining,...
+    45,...
+    'filled');
 
 hold on;
 
+minValue = ...
+    min([Y;predictedTraining]);
+
+maxValue = ...
+    max([Y;predictedTraining]);
+
 plot( ...
-    freqRange/1e9,...
-    optimizedS11dB,...
+    [minValue maxValue],...
+    [minValue maxValue],...
     '--',...
     'LineWidth',2);
 
-yline(-10,':');
-
 grid on;
 
-xlabel('Frequency (GHz)');
-ylabel('S_{11} (dB)');
+xlabel('Actual S_{11} (dB)');
+ylabel('Predicted S_{11} (dB)');
 
-title('Original vs Optimized Horn Antenna');
+title('Surrogate Model: Actual vs Predicted');
 
 legend( ...
-    'Original',...
-    'Optimized',...
-    '-10 dB Target',...
+    'Training Samples',...
+    'Ideal Prediction',...
     'Location','best');
 
 saveas( ...
     gcf,...
     fullfile( ...
     resultFolder,...
-    'Original_vs_Optimized.png'));
+    'Surrogate_Validation.png'));
 
 %% ========================================================================
-% 25. FINAL GEOMETRY
+% 8C. CROSS-VALIDATION
 % =========================================================================
 
-figure( ...
-    'Name','Final Optimized Geometry',...
-    'NumberTitle','off');
+fprintf('\nRunning leave-one-out validation...\n');
 
-show(optimizedHorn);
+N = size(X,1);
 
-title('Final Optimized Rectangular Horn');
+LOOerror = NaN(N,1);
 
-saveas( ...
-    gcf,...
-    fullfile( ...
-    resultFolder,...
-    'Final_Geometry.png'));
+for i = 1:N
 
-%% ========================================================================
-% 26. FINAL RADIATION PATTERN
-% =========================================================================
+    trainingIndex = true(N,1);
 
-figure( ...
-    'Name','Final Radiation Pattern',...
-    'NumberTitle','off');
+    trainingIndex(i) = false;
 
-pattern( ...
-    optimizedHorn,...
-    f0);
+    Xtrain = Xnorm(trainingIndex,:);
+    Ytrain = Y(trainingIndex);
 
-title('Final Optimized Radiation Pattern');
+    Wtrain = Xtrain(:,1);
+    Htrain = Xtrain(:,2);
+    Ltrain = Xtrain(:,3);
 
-saveas( ...
-    gcf,...
-    fullfile( ...
-    resultFolder,...
-    'Final_Radiation_Pattern.png'));
+    Atrain = [ ...
+        ones(size(Wtrain)),...
+        Wtrain,...
+        Htrain,...
+        Ltrain,...
+        Wtrain.^2,...
+        Htrain.^2,...
+        Ltrain.^2,...
+        Wtrain.*Htrain,...
+        Wtrain.*Ltrain,...
+        Htrain.*Ltrain];
 
-%% ========================================================================
-% 27. FINAL REPORT
-% =========================================================================
+    betaLOO = ...
+        Atrain\Ytrain;
 
-optimizationTime = ...
-    toc(optimizationTimer);
+    %% Test point
 
-fprintf('\n');
-fprintf('=====================================================================\n');
-fprintf('                    EFFICIENCY REPORT\n');
-fprintf('=====================================================================\n');
+    Wtest = Xnorm(i,1);
+    Htest = Xnorm(i,2);
+    Ltest = Xnorm(i,3);
 
-fprintf('\nInitial real EM simulations : %d\n',...
-    initialSamples);
+    Atest = [ ...
+        1,...
+        Wtest,...
+        Htest,...
+        Ltest,...
+        Wtest^2,...
+        Htest^2,...
+        Ltest^2,...
+        Wtest*Htest,...
+        Wtest*Ltest,...
+        Htest*Ltest];
 
-fprintf('Virtual predictions         : %d\n',...
-    virtualSamples);
+    prediction = ...
+        Atest*betaLOO;
 
-fprintf('Candidate EM simulations   : %d\n',...
-    candidateCount);
-
-fprintf('Final expensive analyses  : %d\n',...
-    finalCount);
-
-fprintf('Optimization time          : %.2f seconds\n',...
-    optimizationTime);
-
-fprintf('\nFinal Design\n');
-fprintf('---------------------------------------------------------------------\n');
-
-fprintf('Width       : %.3f cm\n',...
-    bestDesign.FlareWidth_m*100);
-
-fprintf('Height      : %.3f cm\n',...
-    bestDesign.FlareHeight_m*100);
-
-fprintf('Length      : %.3f cm\n',...
-    bestDesign.HornLength_m*100);
-
-fprintf('S11         : %.3f dB\n',...
-    bestDesign.S11_dB);
-
-fprintf('VSWR        : %.3f\n',...
-    bestDesign.VSWR);
-
-fprintf('Gain        : %.3f dBi\n',...
-    bestDesign.Gain_dBi);
-
-fprintf('Directivity : %.3f dBi\n',...
-    bestDesign.Directivity_dBi);
-
-if ~isnan(optimizedBandwidth)
-
-    fprintf('\n-10 dB Bandwidth : %.3f GHz\n',...
-        optimizedBandwidth/1e9);
-
-    fprintf('Fractional BW    : %.2f %%\n',...
-        optimizedFractionalBW);
+    LOOerror(i) = ...
+        Y(i)-prediction;
 
 end
 
-fprintf('\n=====================================================================\n');
-fprintf('              OPTIMIZATION COMPLETED SUCCESSFULLY\n');
-fprintf('=====================================================================\n');
+%% Cross-validation metrics
+
+LOO_RMSE = ...
+    sqrt(mean(LOOerror.^2));
+
+LOO_MAE = ...
+    mean(abs(LOOerror));
+
+fprintf('\nCross-validation results\n');
+fprintf('-------------------------------------\n');
+
+fprintf('LOO RMSE : %.4f dB\n',LOO_RMSE);
+fprintf('LOO MAE  : %.4f dB\n',LOO_MAE);
+
+if LOO_RMSE <= 1.5
+
+    fprintf('Cross-validation : PASS\n');
+
+else
+
+    fprintf('Cross-validation : WARNING\n');
+
+end
