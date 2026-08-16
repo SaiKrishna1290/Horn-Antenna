@@ -73,4 +73,8 @@ Return Loss = +10 dB
 
 Although S11 and return loss are often casually used interchangeably inantenna plots, the sign convention is technically different.
 
+A horn antenna is a flared waveguide antenna in which the cross-sectional area of the waveguide gradually increases toward the aperture.
+
+The flaring provides a smoother transition between:
+
    
