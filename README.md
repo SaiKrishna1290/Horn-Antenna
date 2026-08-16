@@ -76,5 +76,12 @@ Although S11 and return loss are often casually used interchangeably inantenna p
 A horn antenna is a flared waveguide antenna in which the cross-sectional area of the waveguide gradually increases toward the aperture.
 
 The flaring provides a smoother transition between:
+Rectangular Waveguide
+        ↓
+    Flared Section
+        ↓
+      Aperture
+        ↓
+Free-Space Radiation
 
    
