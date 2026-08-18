@@ -6,6 +6,7 @@ fprintf('\n');
 fprintf('=====================================================================\n');
 fprintf('           MONTE-CARLO ROBUSTNESS ANALYSIS\n');
 fprintf('=====================================================================\n');
+fprintf(here is that);
 
 monteCarloTimer = tic;
 
