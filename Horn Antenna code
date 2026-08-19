@@ -217,3 +217,25 @@ fprintf('VSWR <= 2      : %.1f %%\n',...
 
 fprintf('\nMonte-Carlo time : %.2f seconds\n',...
     toc(monteCarloTimer));
+%% ========================================================================
+% PREALLOCATE MONTE-CARLO RESULTS
+% =========================================================================
+
+mcWidth  = NaN(numMonteCarlo,1);
+mcHeight = NaN(numMonteCarlo,1);
+mcLength = NaN(numMonteCarlo,1);
+
+% Electrical parameters
+mcGamma      = NaN(numMonteCarlo,1);
+mcS11        = NaN(numMonteCarlo,1);
+mcReturnLoss = NaN(numMonteCarlo,1);
+mcVSWR       = NaN(numMonteCarlo,1);
+
+% Input impedance
+mcResistance = NaN(numMonteCarlo,1);
+mcReactance  = NaN(numMonteCarlo,1);
+
+% Radiation parameters
+mcGain        = NaN(numMonteCarlo,1);
+mcDirectivity = NaN(numMonteCarlo,1);
+mcEfficiency  = NaN(numMonteCarlo,1);
