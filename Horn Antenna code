@@ -239,3 +239,25 @@ mcReactance  = NaN(numMonteCarlo,1);
 mcGain        = NaN(numMonteCarlo,1);
 mcDirectivity = NaN(numMonteCarlo,1);
 mcEfficiency  = NaN(numMonteCarlo,1);
+%% ========================================================================
+% VALID RESULTS
+% =========================================================================
+
+validMC = ...
+    isfinite(mcS11) & ...
+    isfinite(mcVSWR) & ...
+    isfinite(mcGain) & ...
+    isfinite(mcDirectivity);
+
+validS11        = mcS11(validMC);
+validVSWR       = mcVSWR(validMC);
+validGain       = mcGain(validMC);
+validDirectivity = mcDirectivity(validMC);
+
+validGamma      = mcGamma(validMC);
+validReturnLoss = mcReturnLoss(validMC);
+
+validResistance = mcResistance(validMC);
+validReactance  = mcReactance(validMC);
+
+validEfficiency = mcEfficiency(validMC);
