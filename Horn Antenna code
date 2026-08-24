@@ -1,148 +1,794 @@
 %% ========================================================================
-% 33. MONTE-CARLO MANUFACTURING TOLERANCE ANALYSIS
-% =========================================================================
+%  RECTANGULAR HORN ANTENNA
+%  DESIGN, ANALYSIS AND MONTE-CARLO ROBUSTNESS EVALUATION
+%
+%  MATLAB Antenna Toolbox
+%
+%  Features:
+%  1. Horn Geometry
+%  2. Radiation Pattern
+%  3. S11 Analysis
+%  4. Return Loss
+%  5. VSWR
+%  6. Input Impedance
+%  7. Surface Current
+%  8. Gain
+%  9. Directivity
+% 10. Efficiency
+% 11. Horn-Fed Reflector
+% 12. Manufacturing Tolerance Analysis
+% 13. Monte-Carlo Simulation
+% 14. Statistical Analysis
+% 15. 95% Confidence Interval
+% 16. Manufacturing Yield
+% 17. Robustness Score
+% 18. Worst-Case Design
+% 19. Sensitivity Analysis
+% 20. Final Reliability Report
+%
+%  Author : Sai Krishna
+% ========================================================================
+
+clc;
+clear;
+close all;
+
+simulationTimer = tic;
+
+%% ========================================================================
+% 1. SIMULATION PARAMETERS
+% ========================================================================
+
+c = physconst('LightSpeed');
+
+f0 = 10e9;                  % Operating frequency: 10 GHz
+
+freqStart = 8e9;
+freqStop  = 12e9;
+
+numPoints = 75;
+
+freqRange = linspace(freqStart,freqStop,numPoints);
+
+lambda = c/f0;
+
+%% Reference impedance
+
+Z0 = 50;
 
 fprintf('\n');
 fprintf('=====================================================================\n');
-fprintf('           MONTE-CARLO ROBUSTNESS ANALYSIS\n');
+fprintf('       RECTANGULAR HORN ANTENNA SIMULATION AND ANALYSIS\n');
 fprintf('=====================================================================\n');
-fprintf(here is that Antenna);
+
+fprintf('\nSimulation Parameters\n');
+fprintf('---------------------------------------------------------------------\n');
+
+fprintf('Operating Frequency : %.2f GHz\n',f0/1e9);
+
+fprintf('Frequency Range     : %.2f GHz to %.2f GHz\n',...
+    freqStart/1e9,...
+    freqStop/1e9);
+
+fprintf('Frequency Points    : %d\n',numPoints);
+
+fprintf('Wavelength          : %.3f mm\n',...
+    lambda*1000);
+
+fprintf('Reference Impedance : %.1f Ohms\n',Z0);
+
+%% ========================================================================
+% 2. HORN DIMENSIONS
+% ========================================================================
+
+flareWidth  = 0.10;         % 10 cm
+
+flareHeight = 0.07;         % 7 cm
+
+hornLength  = 0.15;         % 15 cm
+
+fprintf('\nHorn Dimensions\n');
+fprintf('---------------------------------------------------------------------\n');
+
+fprintf('Flare Width  : %.2f cm\n',...
+    flareWidth*100);
+
+fprintf('Flare Height : %.2f cm\n',...
+    flareHeight*100);
+
+fprintf('Horn Length  : %.2f cm\n',...
+    hornLength*100);
+
+%% ========================================================================
+% 3. CREATE RECTANGULAR HORN ANTENNA
+% ========================================================================
+
+myHorn = horn;
+
+myHorn.FlareWidth  = flareWidth;
+
+myHorn.FlareHeight = flareHeight;
+
+myHorn.Length      = hornLength;
+
+fprintf('\nHorn antenna created successfully.\n');
+
+%% ========================================================================
+% 4. DISPLAY HORN GEOMETRY
+% ========================================================================
+
+figure('Name','Horn Geometry',...
+    'NumberTitle','off');
+
+show(myHorn);
+
+title('Rectangular Horn Antenna Geometry');
+
+grid on;
+
+%% ========================================================================
+% 5. 3D RADIATION PATTERN
+% ========================================================================
+
+fprintf('\nCalculating radiation pattern...\n');
+
+figure('Name','3D Radiation Pattern',...
+    'NumberTitle','off');
+
+pattern(myHorn,f0);
+
+title(sprintf(...
+    '3D Radiation Pattern at %.2f GHz',...
+    f0/1e9));
+
+%% ========================================================================
+% 6. GAIN AT MAIN BEAM DIRECTION
+% ========================================================================
+
+try
+
+    gain0 = pattern(...
+        myHorn,...
+        f0,...
+        0,...
+        0,...
+        'Type',...
+        'gain');
+
+catch
+
+    gain0 = NaN;
+
+end
+
+%% ========================================================================
+% 7. DIRECTIVITY AT MAIN BEAM DIRECTION
+% ========================================================================
+
+try
+
+    directivity0 = pattern(...
+        myHorn,...
+        f0,...
+        0,...
+        0,...
+        'Type',...
+        'directivity');
+
+catch
+
+    directivity0 = NaN;
+
+end
+
+%% ========================================================================
+% 8. ANTENNA EFFICIENCY
+% ========================================================================
+
+try
+
+    efficiency0 = efficiency(myHorn,f0);
+
+catch
+
+    efficiency0 = NaN;
+
+end
+
+%% ========================================================================
+% 9. S-PARAMETER CALCULATION
+% ========================================================================
+
+fprintf('\nCalculating S-parameters...\n');
+
+S = sparameters(myHorn,freqRange);
+
+%% Extract S11
+
+S11Complex = squeeze(S.Parameters(1,1,:));
+
+Gamma = abs(S11Complex);
+
+S11dB = 20*log10(max(Gamma,eps));
+
+%% Return Loss
+
+returnLoss = -S11dB;
+
+%% VSWR
+
+VSWR = (1 + Gamma)./max(1 - Gamma,eps);
+
+%% ========================================================================
+% 10. RESONANT FREQUENCY
+% ========================================================================
+
+[minS11,index] = min(S11dB);
+
+resonantFreq = freqRange(index);
+
+resonantGamma = Gamma(index);
+
+resonantVSWR = VSWR(index);
+
+%% ========================================================================
+% 11. CALCULATE INPUT IMPEDANCE
+% ========================================================================
+
+Zin = Z0 .* ...
+    (1 + S11Complex) ./ ...
+    max(abs(1 - S11Complex),eps);
+
+% Recalculate using complex denominator properly
+
+Zin = Z0 .* ...
+    ((1 + S11Complex) ./ ...
+    (1 - S11Complex));
+
+Resistance = real(Zin);
+
+Reactance = imag(Zin);
+
+%% ========================================================================
+% 12. S11 PERFORMANCE ANALYSIS
+% ========================================================================
+
+s11Limit = -10;
+
+s11Pass = S11dB <= s11Limit;
+
+validBandwidthIndex = find(s11Pass);
+
+if isempty(validBandwidthIndex)
+
+    lowerFrequency = NaN;
+
+    upperFrequency = NaN;
+
+    bandwidth = 0;
+
+    fractionalBandwidth = 0;
+
+else
+
+    lowerFrequency = ...
+        freqRange(validBandwidthIndex(1));
+
+    upperFrequency = ...
+        freqRange(validBandwidthIndex(end));
+
+    bandwidth = ...
+        upperFrequency - lowerFrequency;
+
+    centerFrequency = ...
+        (upperFrequency + lowerFrequency)/2;
+
+    fractionalBandwidth = ...
+        bandwidth/centerFrequency*100;
+
+end
+
+%% ========================================================================
+% 13. RF S-PARAMETER PLOT
+% ========================================================================
+
+figure('Name','S Parameters',...
+    'NumberTitle','off');
+
+rfplot(S);
+
+grid on;
+
+title('S-Parameter Response');
+
+%% ========================================================================
+% 14. CUSTOM S11 PLOT
+% ========================================================================
+
+figure('Name','S11 Response',...
+    'NumberTitle','off');
+
+plot(...
+    freqRange/1e9,...
+    S11dB,...
+    'LineWidth',2);
+
+hold on;
+
+yline(...
+    -10,...
+    '--',...
+    '-10 dB Target',...
+    'LineWidth',1.5);
+
+plot(...
+    resonantFreq/1e9,...
+    minS11,...
+    'o',...
+    'MarkerSize',8,...
+    'MarkerFaceColor','r');
+
+grid on;
+
+xlabel('Frequency (GHz)');
+
+ylabel('S_{11} (dB)');
+
+title('S_{11} vs Frequency');
+
+legend(...
+    'S_{11}',...
+    '-10 dB Limit',...
+    'Minimum S_{11}',...
+    'Location','best');
+
+%% ========================================================================
+% 15. RETURN LOSS PLOT
+% ========================================================================
+
+figure('Name','Return Loss',...
+    'NumberTitle','off');
+
+plot(...
+    freqRange/1e9,...
+    returnLoss,...
+    'LineWidth',2);
+
+grid on;
+
+xlabel('Frequency (GHz)');
+
+ylabel('Return Loss (dB)');
+
+title('Return Loss vs Frequency');
+
+%% ========================================================================
+% 16. VSWR PLOT
+% ========================================================================
+
+figure('Name','VSWR',...
+    'NumberTitle','off');
+
+plot(...
+    freqRange/1e9,...
+    VSWR,...
+    'LineWidth',2);
+
+hold on;
+
+yline(...
+    2,...
+    '--',...
+    'VSWR = 2',...
+    'LineWidth',1.5);
+
+grid on;
+
+xlabel('Frequency (GHz)');
+
+ylabel('VSWR');
+
+title('VSWR vs Frequency');
+
+legend(...
+    'VSWR',...
+    'Maximum Acceptable VSWR',...
+    'Location','best');
+
+%% ========================================================================
+% 17. INPUT IMPEDANCE PLOT
+% ========================================================================
+
+figure('Name','Input Impedance',...
+    'NumberTitle','off');
+
+plot(...
+    freqRange/1e9,...
+    Resistance,...
+    'LineWidth',2);
+
+hold on;
+
+plot(...
+    freqRange/1e9,...
+    Reactance,...
+    'LineWidth',2);
+
+yline(...
+    50,...
+    '--',...
+    '50 Ohm Reference');
+
+grid on;
+
+xlabel('Frequency (GHz)');
+
+ylabel('Impedance (Ohms)');
+
+title('Input Impedance vs Frequency');
+
+legend(...
+    'Resistance',...
+    'Reactance',...
+    '50 Ohm',...
+    'Location','best');
+
+%% ========================================================================
+% 18. SURFACE CURRENT DISTRIBUTION
+% ========================================================================
+
+try
+
+    figure('Name','Surface Current',...
+        'NumberTitle','off');
+
+    current(myHorn,f0);
+
+    title(sprintf(...
+        'Surface Current Distribution at %.2f GHz',...
+        f0/1e9));
+
+catch ME
+
+    fprintf('\nSurface current analysis unavailable.\n');
+
+    fprintf('%s\n',ME.message);
+
+end
+
+%% ========================================================================
+% 19. EFFICIENCY AND RADIATION PARAMETERS
+% ========================================================================
+
+fprintf('\n');
+fprintf('=====================================================================\n');
+fprintf('                    NOMINAL ANTENNA PERFORMANCE\n');
+fprintf('=====================================================================\n');
+
+fprintf('\nOperating Frequency : %.3f GHz\n',...
+    f0/1e9);
+
+fprintf('Resonant Frequency  : %.3f GHz\n',...
+    resonantFreq/1e9);
+
+fprintf('Minimum S11         : %.3f dB\n',...
+    minS11);
+
+fprintf('Reflection Coefficient : %.5f\n',...
+    resonantGamma);
+
+fprintf('VSWR at Resonance      : %.3f\n',...
+    resonantVSWR);
+
+fprintf('Gain at 0 Degrees      : %.3f dBi\n',...
+    gain0);
+
+fprintf('Directivity at 0 Degrees : %.3f dBi\n',...
+    directivity0);
+
+fprintf('Efficiency             : %.4f\n',...
+    efficiency0);
+
+fprintf('Input Resistance       : %.3f Ohms\n',...
+    Resistance(index));
+
+fprintf('Input Reactance        : %.3f Ohms\n',...
+    Reactance(index));
+
+if bandwidth > 0
+
+    fprintf('\n-10 dB Bandwidth\n');
+
+    fprintf('Lower Frequency : %.3f GHz\n',...
+        lowerFrequency/1e9);
+
+    fprintf('Upper Frequency : %.3f GHz\n',...
+        upperFrequency/1e9);
+
+    fprintf('Bandwidth       : %.3f GHz\n',...
+        bandwidth/1e9);
+
+    fprintf('Fractional BW   : %.2f %%\n',...
+        fractionalBandwidth);
+
+else
+
+    fprintf('\nNo -10 dB bandwidth detected.\n');
+
+end
+
+%% ========================================================================
+% 20. HORN-FED REFLECTOR ANTENNA
+% ========================================================================
+
+fprintf('\nCreating horn-fed reflector...\n');
+
+try
+
+    myDish = reflector;
+
+    myDish.Exciter = myHorn;
+
+    myDish.GroundPlaneRadius = 0.5;
+
+    figure('Name','Horn-Fed Reflector',...
+        'NumberTitle','off');
+
+    show(myDish);
+
+    title('Horn-Fed Reflector Antenna');
+
+    %% Reflector Radiation Pattern
+
+    figure('Name','Reflector Radiation Pattern',...
+        'NumberTitle','off');
+
+    pattern(myDish,f0);
+
+    title(sprintf(...
+        'Horn-Fed Reflector Radiation Pattern at %.2f GHz',...
+        f0/1e9));
+
+catch ME
+
+    fprintf('\nReflector simulation unavailable.\n');
+
+    fprintf('%s\n',ME.message);
+
+end
+
+%% ========================================================================
+% 21. MONTE-CARLO MANUFACTURING TOLERANCE ANALYSIS
+% ========================================================================
+
+fprintf('\n');
+fprintf('=====================================================================\n');
+fprintf('              MONTE-CARLO ROBUSTNESS ANALYSIS\n');
+fprintf('=====================================================================\n');
+
+fprintf('Analyzing horn antenna under manufacturing tolerances...\n');
 
 monteCarloTimer = tic;
 
-%% Number of random samples
+%% Number of random antenna samples
 
 numMonteCarlo = 50;
 
 %% Manufacturing tolerance
 
-tolerance = 0.02;       % ±2%
+tolerance = 0.02;       % ±2 percent
 
-
-fprintf('\nMonte-Carlo samples : %d\n',numMonteCarlo);
-fprintf('Dimensional tolerance : ±%.1f %%\n',...
-    tolerance*100);
-
-%% Frequency for robustness test
+%% Frequency for robustness analysis
 
 mcFrequency = f0;
 
-%% Preallocate
+fprintf('\nMonte-Carlo Samples      : %d\n',...
+    numMonteCarlo);
 
-mcWidth = NaN(numMonteCarlo,1);
+fprintf('Dimensional Tolerance    : ±%.2f %%\n',...
+    tolerance*100);
+
+fprintf('Analysis Frequency       : %.2f GHz\n',...
+    mcFrequency/1e9);
+
+%% ========================================================================
+% 22. PREALLOCATE MONTE-CARLO PARAMETERS
+% ========================================================================
+
+mcWidth  = NaN(numMonteCarlo,1);
+
 mcHeight = NaN(numMonteCarlo,1);
+
 mcLength = NaN(numMonteCarlo,1);
 
-mcS11 = NaN(numMonteCarlo,1);
-mcVSWR = NaN(numMonteCarlo,1);
+%% Electrical Parameters
 
-%% Random seed for reproducibility
+mcGamma      = NaN(numMonteCarlo,1);
+
+mcS11        = NaN(numMonteCarlo,1);
+
+mcReturnLoss = NaN(numMonteCarlo,1);
+
+mcVSWR       = NaN(numMonteCarlo,1);
+
+%% Impedance Parameters
+
+mcResistance = NaN(numMonteCarlo,1);
+
+mcReactance = NaN(numMonteCarlo,1);
+
+%% Radiation Parameters
+
+mcGain = NaN(numMonteCarlo,1);
+
+mcDirectivity = NaN(numMonteCarlo,1);
+
+mcEfficiency = NaN(numMonteCarlo,1);
+
+%% ========================================================================
+% 23. RANDOM DIMENSIONAL VARIATION
+% ========================================================================
 
 rng(25,'twister');
 
-%% Random dimensional variations
-
 mcWidth = ...
-    bestDesign.FlareWidth_m .* ...
+    flareWidth .* ...
     (1 + tolerance*(2*rand(numMonteCarlo,1)-1));
 
 mcHeight = ...
-    bestDesign.FlareHeight_m .* ...
+    flareHeight .* ...
     (1 + tolerance*(2*rand(numMonteCarlo,1)-1));
 
 mcLength = ...
-    bestDesign.HornLength_m .* ...
+    hornLength .* ...
     (1 + tolerance*(2*rand(numMonteCarlo,1)-1));
 
 %% ========================================================================
-% RUN MONTE-CARLO EM SIMULATIONS
-% =========================================================================
+% 24. RUN MONTE-CARLO SIMULATIONS
+% ========================================================================
 
-fprintf('\nRunning tolerance simulations...\n');
+fprintf('\nRunning Monte-Carlo simulations...\n');
 
-if parallelAvailable
+for k = 1:numMonteCarlo
 
-    parfor k = 1:numMonteCarlo
+    fprintf('Simulation %d of %d\n',...
+        k,...
+        numMonteCarlo);
 
-        testHorn = horn;
+    try
 
-        testHorn.FlareWidth = mcWidth(k);
-        testHorn.FlareHeight = mcHeight(k);
-        testHorn.Length = mcLength(k);
-
-        try
-
-            tempS = ...
-                sparameters(testHorn,mcFrequency);
-
-            gamma = ...
-                abs(tempS.Parameters(1,1));
-
-            mcS11(k) = ...
-                20*log10(gamma);
-
-            if gamma < 1
-
-                mcVSWR(k) = ...
-                    (1+gamma)/(1-gamma);
-
-            end
-
-        catch
-
-            mcS11(k) = NaN;
-            mcVSWR(k) = NaN;
-
-        end
-
-    end
-
-else
-
-    for k = 1:numMonteCarlo
+        %% Create tolerance-modified horn
 
         testHorn = horn;
 
         testHorn.FlareWidth = mcWidth(k);
+
         testHorn.FlareHeight = mcHeight(k);
+
         testHorn.Length = mcLength(k);
+
+        %% Calculate S Parameters
+
+        tempS = ...
+            sparameters(testHorn,mcFrequency);
+
+        gammaComplex = ...
+            tempS.Parameters(1,1);
+
+        gammaMagnitude = ...
+            abs(gammaComplex);
+
+        %% Reflection Coefficient
+
+        mcGamma(k) = gammaMagnitude;
+
+        %% S11
+
+        mcS11(k) = ...
+            20*log10(max(gammaMagnitude,eps));
+
+        %% Return Loss
+
+        mcReturnLoss(k) = ...
+            -mcS11(k);
+
+        %% VSWR
+
+        if gammaMagnitude < 1
+
+            mcVSWR(k) = ...
+                (1 + gammaMagnitude) / ...
+                (1 - gammaMagnitude);
+
+        end
+
+        %% Input Impedance
+
+        ZinMC = ...
+            Z0 * ...
+            ((1 + gammaComplex) / ...
+            (1 - gammaComplex));
+
+        mcResistance(k) = ...
+            real(ZinMC);
+
+        mcReactance(k) = ...
+            imag(ZinMC);
+
+        %% Gain
 
         try
 
-            tempS = ...
-                sparameters(testHorn,mcFrequency);
-
-            gamma = ...
-                abs(tempS.Parameters(1,1));
-
-            mcS11(k) = ...
-                20*log10(gamma);
-
-            if gamma < 1
-
-                mcVSWR(k) = ...
-                    (1+gamma)/(1-gamma);
-
-            end
+            mcGain(k) = ...
+                pattern(...
+                testHorn,...
+                mcFrequency,...
+                0,...
+                0,...
+                'Type',...
+                'gain');
 
         catch
 
-            mcS11(k) = NaN;
-            mcVSWR(k) = NaN;
+            mcGain(k) = NaN;
 
         end
+
+        %% Directivity
+
+        try
+
+            mcDirectivity(k) = ...
+                pattern(...
+                testHorn,...
+                mcFrequency,...
+                0,...
+                0,...
+                'Type',...
+                'directivity');
+
+        catch
+
+            mcDirectivity(k) = NaN;
+
+        end
+
+        %% Efficiency
+
+        try
+
+            mcEfficiency(k) = ...
+                efficiency(testHorn,...
+                mcFrequency);
+
+        catch
+
+            mcEfficiency(k) = NaN;
+
+        end
+
+    catch ME
+
+        fprintf(...
+            'Warning: Simulation %d failed: %s\n',...
+            k,...
+            ME.message);
 
     end
 
 end
 
+fprintf('\nMonte-Carlo simulations completed.\n');
+
 %% ========================================================================
-% REMOVE INVALID RESULTS
-% =========================================================================
+% 25. VALID RESULTS
+% ========================================================================
 
 validMC = ...
     isfinite(mcS11) & ...
     isfinite(mcVSWR);
+
+%% Extract valid data
 
 validS11 = ...
     mcS11(validMC);
@@ -150,114 +796,949 @@ validS11 = ...
 validVSWR = ...
     mcVSWR(validMC);
 
+validGamma = ...
+    mcGamma(validMC);
+
+validReturnLoss = ...
+    mcReturnLoss(validMC);
+
+validResistance = ...
+    mcResistance(validMC);
+
+validReactance = ...
+    mcReactance(validMC);
+
+%% Radiation data may contain unavailable samples
+
+validGain = ...
+    mcGain(isfinite(mcGain));
+
+validDirectivity = ...
+    mcDirectivity(isfinite(mcDirectivity));
+
+validEfficiency = ...
+    mcEfficiency(isfinite(mcEfficiency));
+
+nValid = sum(validMC);
+
+if nValid == 0
+
+    error('No valid Monte-Carlo simulations were completed.');
+
+end
+
 %% ========================================================================
-% STATISTICS
-% =========================================================================
+% 26. MONTE-CARLO STATISTICAL ANALYSIS
+% ========================================================================
+
+%% S11 Statistics
 
 meanS11 = mean(validS11);
+
 stdS11 = std(validS11);
 
-worstS11 = max(validS11);
 bestS11 = min(validS11);
 
+worstS11 = max(validS11);
+
+%% VSWR Statistics
+
 meanVSWR = mean(validVSWR);
+
 stdVSWR = std(validVSWR);
 
-worstVSWR = max(validVSWR);
 bestVSWR = min(validVSWR);
 
+worstVSWR = max(validVSWR);
+
+%% Reflection Coefficient
+
+meanGamma = mean(validGamma);
+
+stdGamma = std(validGamma);
+
+%% Return Loss
+
+meanReturnLoss = mean(validReturnLoss);
+
+stdReturnLoss = std(validReturnLoss);
+
+%% Input Resistance
+
+meanResistance = mean(validResistance);
+
+stdResistance = std(validResistance);
+
+%% Input Reactance
+
+meanReactance = mean(validReactance);
+
+stdReactance = std(validReactance);
+
+%% Gain
+
+if ~isempty(validGain)
+
+    meanGain = mean(validGain);
+
+    stdGain = std(validGain);
+
+    minGain = min(validGain);
+
+    maxGain = max(validGain);
+
+else
+
+    meanGain = NaN;
+
+    stdGain = NaN;
+
+    minGain = NaN;
+
+    maxGain = NaN;
+
+end
+
+%% Directivity
+
+if ~isempty(validDirectivity)
+
+    meanDirectivity = mean(validDirectivity);
+
+    stdDirectivity = std(validDirectivity);
+
+else
+
+    meanDirectivity = NaN;
+
+    stdDirectivity = NaN;
+
+end
+
+%% Efficiency
+
+if ~isempty(validEfficiency)
+
+    meanEfficiency = mean(validEfficiency);
+
+    stdEfficiency = std(validEfficiency);
+
+else
+
+    meanEfficiency = NaN;
+
+    stdEfficiency = NaN;
+
+end
+
 %% ========================================================================
-% ROBUSTNESS PERCENTAGE
-% =========================================================================
+% 27. 95 PERCENT CONFIDENCE INTERVAL
+% ========================================================================
 
-s11Success = ...
-    validS11 <= -10;
+S11_CI = ...
+    [...
+    meanS11 - 1.96*stdS11/sqrt(nValid),...
+    meanS11 + 1.96*stdS11/sqrt(nValid)...
+    ];
 
-vswrSuccess = ...
-    validVSWR <= 2;
+VSWR_CI = ...
+    [...
+    meanVSWR - 1.96*stdVSWR/sqrt(nValid),...
+    meanVSWR + 1.96*stdVSWR/sqrt(nValid)...
+    ];
 
-s11Robustness = ...
-    mean(s11Success)*100;
+if ~isempty(validGain)
 
-vswrRobustness = ...
-    mean(vswrSuccess)*100;
+    nGain = numel(validGain);
+
+    Gain_CI = ...
+        [...
+        meanGain - 1.96*stdGain/sqrt(nGain),...
+        meanGain + 1.96*stdGain/sqrt(nGain)...
+        ];
+
+else
+
+    Gain_CI = [NaN NaN];
+
+end
 
 %% ========================================================================
-% DISPLAY RESULTS
-% =========================================================================
+% 28. MANUFACTURING YIELD ANALYSIS
+% ========================================================================
+
+vswrLimit = 2;
+
+%% Gain requirement
+% Gain threshold is selected relative to nominal gain
+
+if isfinite(gain0)
+
+    gainLimit = gain0 - 1;
+
+else
+
+    gainLimit = -Inf;
+
+end
+
+%% Individual performance criteria
+
+s11PassMC = ...
+    validS11 <= s11Limit;
+
+vswrPassMC = ...
+    validVSWR <= vswrLimit;
+
+%% Gain pass rate
+
+if ~isempty(validGain)
+
+    gainPassMC = ...
+        validGain >= gainLimit;
+
+    gainSuccessRate = ...
+        mean(gainPassMC)*100;
+
+else
+
+    gainSuccessRate = NaN;
+
+end
+
+%% Electrical manufacturing yield
+
+overallElectricalPass = ...
+    s11PassMC & vswrPassMC;
+
+manufacturingYield = ...
+    mean(overallElectricalPass)*100;
+
+%% Individual success rates
+
+s11SuccessRate = ...
+    mean(s11PassMC)*100;
+
+vswrSuccessRate = ...
+    mean(vswrPassMC)*100;
+
+%% ========================================================================
+% 29. WORST-CASE DESIGN
+% ========================================================================
+
+validIndices = find(validMC);
+
+[worstS11Value,localWorstIndex] = ...
+    max(validS11);
+
+worstIndex = ...
+    validIndices(localWorstIndex);
+
+worstWidth = ...
+    mcWidth(worstIndex);
+
+worstHeight = ...
+    mcHeight(worstIndex);
+
+worstLength = ...
+    mcLength(worstIndex);
+
+worstCaseVSWR = ...
+    mcVSWR(worstIndex);
+
+worstCaseResistance = ...
+    mcResistance(worstIndex);
+
+worstCaseReactance = ...
+    mcReactance(worstIndex);
+
+%% ========================================================================
+% 30. ROBUSTNESS SCORE
+% ========================================================================
+
+%% Weighting factors
+
+weightS11 = 0.40;
+
+weightVSWR = 0.30;
+
+weightYield = 0.30;
+
+%% Robustness Score
+
+robustnessScore = ...
+    weightS11*s11SuccessRate + ...
+    weightVSWR*vswrSuccessRate + ...
+    weightYield*manufacturingYield;
+
+%% Reliability classification
+
+if robustnessScore >= 90
+
+    reliabilityLevel = 'EXCELLENT';
+
+elseif robustnessScore >= 75
+
+    reliabilityLevel = 'HIGHLY RELIABLE';
+
+elseif robustnessScore >= 60
+
+    reliabilityLevel = 'ACCEPTABLE';
+
+else
+
+    reliabilityLevel = 'NEEDS OPTIMIZATION';
+
+end
+
+%% ========================================================================
+% 31. MONTE-CARLO S11 HISTOGRAM
+% ========================================================================
+
+figure('Name','Monte-Carlo S11 Distribution',...
+    'NumberTitle','off');
+
+histogram(validS11,12);
+
+hold on;
+
+xline(...
+    -10,...
+    '--',...
+    '-10 dB Limit',...
+    'LineWidth',2);
+
+xline(...
+    meanS11,...
+    ':',...
+    'Mean S11',...
+    'LineWidth',2);
+
+grid on;
+
+xlabel('S_{11} (dB)');
+
+ylabel('Number of Samples');
+
+title(...
+    'Monte-Carlo Distribution of S_{11}');
+
+legend(...
+    'Monte-Carlo Samples',...
+    '-10 dB Limit',...
+    'Mean S11',...
+    'Location','best');
+
+%% ========================================================================
+% 32. MONTE-CARLO VSWR HISTOGRAM
+% ========================================================================
+
+figure('Name','Monte-Carlo VSWR Distribution',...
+    'NumberTitle','off');
+
+histogram(validVSWR,12);
+
+hold on;
+
+xline(...
+    2,...
+    '--',...
+    'VSWR = 2',...
+    'LineWidth',2);
+
+xline(...
+    meanVSWR,...
+    ':',...
+    'Mean VSWR',...
+    'LineWidth',2);
+
+grid on;
+
+xlabel('VSWR');
+
+ylabel('Number of Samples');
+
+title(...
+    'Monte-Carlo Distribution of VSWR');
+
+%% ========================================================================
+% 33. DIMENSIONAL VARIATION PLOT
+% ========================================================================
+
+figure('Name','Manufacturing Tolerance',...
+    'NumberTitle','off');
+
+subplot(3,1,1);
+
+histogram(mcWidth*100,12);
+
+grid on;
+
+xlabel('Flare Width (cm)');
+
+ylabel('Samples');
+
+title('Flare Width Distribution');
+
+subplot(3,1,2);
+
+histogram(mcHeight*100,12);
+
+grid on;
+
+xlabel('Flare Height (cm)');
+
+ylabel('Samples');
+
+title('Flare Height Distribution');
+
+subplot(3,1,3);
+
+histogram(mcLength*100,12);
+
+grid on;
+
+xlabel('Horn Length (cm)');
+
+ylabel('Samples');
+
+title('Horn Length Distribution');
+
+%% ========================================================================
+% 34. SENSITIVITY ANALYSIS
+% ========================================================================
 
 fprintf('\n');
-fprintf('Monte-Carlo Results\n');
-fprintf('-------------------------------------\n');
+fprintf('=====================================================================\n');
+fprintf('                    SENSITIVITY ANALYSIS\n');
+fprintf('=====================================================================\n');
 
-fprintf('Valid simulations : %d / %d\n',...
-    sum(validMC),numMonteCarlo);
+sensitivityChange = 0.05;
 
-fprintf('\nS11 Statistics\n');
+baseS11 = minS11;
 
-fprintf('Mean S11     : %.3f dB\n',meanS11);
-fprintf('Std. Dev.    : %.3f dB\n',stdS11);
-fprintf('Best S11     : %.3f dB\n',bestS11);
-fprintf('Worst S11    : %.3f dB\n',worstS11);
+%% Width sensitivity
 
-fprintf('\nVSWR Statistics\n');
+try
 
-fprintf('Mean VSWR    : %.3f\n',meanVSWR);
-fprintf('Std. Dev.    : %.3f\n',stdVSWR);
-fprintf('Best VSWR    : %.3f\n',bestVSWR);
-fprintf('Worst VSWR   : %.3f\n',worstVSWR);
+    widthTest = horn;
 
-fprintf('\nRobustness\n');
+    widthTest.FlareWidth = ...
+        flareWidth*(1+sensitivityChange);
 
-fprintf('S11 <= -10 dB : %.1f %%\n',...
-    s11Robustness);
+    widthTest.FlareHeight = flareHeight;
 
-fprintf('VSWR <= 2      : %.1f %%\n',...
-    vswrRobustness);
+    widthTest.Length = hornLength;
 
-fprintf('\nMonte-Carlo time : %.2f seconds\n',...
-    toc(monteCarloTimer));
+    widthS = ...
+        sparameters(widthTest,f0);
+
+    widthS11 = ...
+        20*log10(abs(widthS.Parameters(1,1)));
+
+    widthSensitivity = ...
+        abs(widthS11-baseS11);
+
+catch
+
+    widthSensitivity = NaN;
+
+end
+
+%% Height sensitivity
+
+try
+
+    heightTest = horn;
+
+    heightTest.FlareWidth = flareWidth;
+
+    heightTest.FlareHeight = ...
+        flareHeight*(1+sensitivityChange);
+
+    heightTest.Length = hornLength;
+
+    heightS = ...
+        sparameters(heightTest,f0);
+
+    heightS11 = ...
+        20*log10(abs(heightS.Parameters(1,1)));
+
+    heightSensitivity = ...
+        abs(heightS11-baseS11);
+
+catch
+
+    heightSensitivity = NaN;
+
+end
+
+%% Length sensitivity
+
+try
+
+    lengthTest = horn;
+
+    lengthTest.FlareWidth = flareWidth;
+
+    lengthTest.FlareHeight = flareHeight;
+
+    lengthTest.Length = ...
+        hornLength*(1+sensitivityChange);
+
+    lengthS = ...
+        sparameters(lengthTest,f0);
+
+    lengthS11 = ...
+        20*log10(abs(lengthS.Parameters(1,1)));
+
+    lengthSensitivity = ...
+        abs(lengthS11-baseS11);
+
+catch
+
+    lengthSensitivity = NaN;
+
+end
+
+sensitivityValues = ...
+    [...
+    widthSensitivity,...
+    heightSensitivity,...
+    lengthSensitivity...
+    ];
+
+%% Determine most sensitive parameter
+
+validSensitivity = ...
+    sensitivityValues;
+
+validSensitivity(~isfinite(validSensitivity)) = -Inf;
+
+[maxSensitivity,sensitivityIndex] = ...
+    max(validSensitivity);
+
+parameterNames = ...
+    {'Flare Width',...
+     'Flare Height',...
+     'Horn Length'};
+
+if maxSensitivity == -Inf
+
+    mostSensitiveParameter = 'Not Available';
+
+else
+
+    mostSensitiveParameter = ...
+        parameterNames{sensitivityIndex};
+
+end
+
 %% ========================================================================
-% PREALLOCATE MONTE-CARLO RESULTS
-% =========================================================================
+% 35. SENSITIVITY PLOT
+% ========================================================================
 
-mcWidth  = NaN(numMonteCarlo,1);
-mcHeight = NaN(numMonteCarlo,1);
-mcLength = NaN(numMonteCarlo,1);
+figure('Name','Parameter Sensitivity',...
+    'NumberTitle','off');
 
-% Electrical parameters
-mcGamma      = NaN(numMonteCarlo,1);
-mcS11        = NaN(numMonteCarlo,1);
-mcReturnLoss = NaN(numMonteCarlo,1);
-mcVSWR       = NaN(numMonteCarlo,1);
+bar(sensitivityValues);
 
-% Input impedance
-mcResistance = NaN(numMonteCarlo,1);
-mcReactance  = NaN(numMonteCarlo,1);
+grid on;
 
-% Radiation parameters
-mcGain        = NaN(numMonteCarlo,1);
-mcDirectivity = NaN(numMonteCarlo,1);
-mcEfficiency  = NaN(numMonteCarlo,1);
+xticklabels(...
+    {'Flare Width',...
+     'Flare Height',...
+     'Horn Length'});
+
+ylabel('|Change in S_{11}| (dB)');
+
+title(...
+    'Sensitivity to +5% Dimensional Variation');
+
 %% ========================================================================
-% VALID RESULTS
-% =========================================================================
+% 36. PHYSICAL DESIGN VALIDATION
+% ========================================================================
 
-validMC = ...
-    isfinite(mcS11) & ...
-    isfinite(mcVSWR) & ...
-    isfinite(mcGain) & ...
-    isfinite(mcDirectivity);
+fprintf('\n');
+fprintf('=====================================================================\n');
+fprintf('                    PHYSICAL DESIGN VALIDATION\n');
+fprintf('=====================================================================\n');
 
-validS11        = mcS11(validMC);
-validVSWR       = mcVSWR(validMC);
-validGain       = mcGain(validMC);
-validDirectivity = mcDirectivity(validMC);
+physicalPass = true;
 
-validGamma      = mcGamma(validMC);
-validReturnLoss = mcReturnLoss(validMC);
+if flareWidth <= 0
 
-validResistance = mcResistance(validMC);
-validReactance  = mcReactance(validMC);
+    physicalPass = false;
 
-validEfficiency = mcEfficiency(validMC);
+    fprintf('FAIL: Invalid flare width.\n');
+
+end
+
+if flareHeight <= 0
+
+    physicalPass = false;
+
+    fprintf('FAIL: Invalid flare height.\n');
+
+end
+
+if hornLength <= 0
+
+    physicalPass = false;
+
+    fprintf('FAIL: Invalid horn length.\n');
+
+end
+
+if physicalPass
+
+    fprintf('Physical Validation : PASS\n');
+
+else
+
+    fprintf('Physical Validation : FAIL\n');
+
+end
+
+%% ========================================================================
+% 37. FINAL MONTE-CARLO PERFORMANCE SUMMARY
+% ========================================================================
+
+monteCarloTime = toc(monteCarloTimer);
+
+fprintf('\n');
+fprintf('=====================================================================\n');
+fprintf('              MONTE-CARLO PERFORMANCE SUMMARY\n');
+fprintf('=====================================================================\n');
+
+fprintf('\nSimulation Information\n');
+fprintf('---------------------------------------------------------------------\n');
+
+fprintf('Total Samples         : %d\n',...
+    numMonteCarlo);
+
+fprintf('Valid Samples         : %d\n',...
+    nValid);
+
+fprintf('Tolerance             : ±%.2f %%\n',...
+    tolerance*100);
+
+fprintf('Monte-Carlo Time      : %.2f seconds\n',...
+    monteCarloTime);
+
+%% S11
+
+fprintf('\nS11 Performance\n');
+fprintf('---------------------------------------------------------------------\n');
+
+fprintf('Mean S11              : %.3f dB\n',...
+    meanS11);
+
+fprintf('Standard Deviation    : %.3f dB\n',...
+    stdS11);
+
+fprintf('Best S11              : %.3f dB\n',...
+    bestS11);
+
+fprintf('Worst S11             : %.3f dB\n',...
+    worstS11);
+
+fprintf('95%% Confidence Interval: [%.3f , %.3f] dB\n',...
+    S11_CI(1),...
+    S11_CI(2));
+
+%% Reflection coefficient
+
+fprintf('\nReflection Coefficient\n');
+fprintf('---------------------------------------------------------------------\n');
+
+fprintf('Mean |Gamma|          : %.6f\n',...
+    meanGamma);
+
+fprintf('Std |Gamma|           : %.6f\n',...
+    stdGamma);
+
+%% Return loss
+
+fprintf('\nReturn Loss\n');
+fprintf('---------------------------------------------------------------------\n');
+
+fprintf('Mean Return Loss      : %.3f dB\n',...
+    meanReturnLoss);
+
+fprintf('Std Return Loss       : %.3f dB\n',...
+    stdReturnLoss);
+
+%% VSWR
+
+fprintf('\nVSWR Performance\n');
+fprintf('---------------------------------------------------------------------\n');
+
+fprintf('Mean VSWR             : %.3f\n',...
+    meanVSWR);
+
+fprintf('Standard Deviation    : %.3f\n',...
+    stdVSWR);
+
+fprintf('Best VSWR             : %.3f\n',...
+    bestVSWR);
+
+fprintf('Worst VSWR            : %.3f\n',...
+    worstVSWR);
+
+fprintf('95%% Confidence Interval: [%.3f , %.3f]\n',...
+    VSWR_CI(1),...
+    VSWR_CI(2));
+
+%% Gain
+
+fprintf('\nGain Performance\n');
+fprintf('---------------------------------------------------------------------\n');
+
+fprintf('Mean Gain             : %.3f dBi\n',...
+    meanGain);
+
+fprintf('Std Gain              : %.3f dB\n',...
+    stdGain);
+
+fprintf('Minimum Gain          : %.3f dBi\n',...
+    minGain);
+
+fprintf('Maximum Gain          : %.3f dBi\n',...
+    maxGain);
+
+fprintf('95%% Confidence Interval: [%.3f , %.3f] dBi\n',...
+    Gain_CI(1),...
+    Gain_CI(2));
+
+%% Directivity
+
+fprintf('\nDirectivity\n');
+fprintf('---------------------------------------------------------------------\n');
+
+fprintf('Mean Directivity      : %.3f dBi\n',...
+    meanDirectivity);
+
+fprintf('Std Directivity       : %.3f dB\n',...
+    stdDirectivity);
+
+%% Efficiency
+
+fprintf('\nEfficiency\n');
+fprintf('---------------------------------------------------------------------\n');
+
+fprintf('Mean Efficiency       : %.5f\n',...
+    meanEfficiency);
+
+%% Input impedance
+
+fprintf('\nInput Impedance\n');
+fprintf('---------------------------------------------------------------------\n');
+
+fprintf('Mean Resistance       : %.3f Ohms\n',...
+    meanResistance);
+
+fprintf('Std Resistance        : %.3f Ohms\n',...
+    stdResistance);
+
+fprintf('Mean Reactance        : %.3f Ohms\n',...
+    meanReactance);
+
+fprintf('Std Reactance         : %.3f Ohms\n',...
+    stdReactance);
+
+%% ========================================================================
+% 38. MANUFACTURING RELIABILITY
+% ========================================================================
+
+fprintf('\n');
+fprintf('=====================================================================\n');
+fprintf('                MANUFACTURING RELIABILITY\n');
+fprintf('=====================================================================\n');
+
+fprintf('\nS11 Success Rate      : %.2f %%\n',...
+    s11SuccessRate);
+
+fprintf('VSWR Success Rate     : %.2f %%\n',...
+    vswrSuccessRate);
+
+fprintf('Electrical Yield      : %.2f %%\n',...
+    manufacturingYield);
+
+fprintf('Gain Success Rate     : %.2f %%\n',...
+    gainSuccessRate);
+
+%% ========================================================================
+% 39. WORST-CASE ANTENNA DESIGN
+% ========================================================================
+
+fprintf('\n');
+fprintf('=====================================================================\n');
+fprintf('                    WORST-CASE DESIGN\n');
+fprintf('=====================================================================\n');
+
+fprintf('\nWorst S11             : %.3f dB\n',...
+    worstS11Value);
+
+fprintf('Flare Width           : %.4f m (%.3f cm)\n',...
+    worstWidth,...
+    worstWidth*100);
+
+fprintf('Flare Height          : %.4f m (%.3f cm)\n',...
+    worstHeight,...
+    worstHeight*100);
+
+fprintf('Horn Length           : %.4f m (%.3f cm)\n',...
+    worstLength,...
+    worstLength*100);
+
+fprintf('Worst-Case VSWR       : %.3f\n',...
+    worstCaseVSWR);
+
+fprintf('Input Resistance      : %.3f Ohms\n',...
+    worstCaseResistance);
+
+fprintf('Input Reactance       : %.3f Ohms\n',...
+    worstCaseReactance);
+
+%% ========================================================================
+% 40. SENSITIVITY RESULTS
+% ========================================================================
+
+fprintf('\n');
+fprintf('=====================================================================\n');
+fprintf('                    SENSITIVITY RESULTS\n');
+fprintf('=====================================================================\n');
+
+fprintf('\nWidth Sensitivity     : %.4f dB\n',...
+    widthSensitivity);
+
+fprintf('Height Sensitivity    : %.4f dB\n',...
+    heightSensitivity);
+
+fprintf('Length Sensitivity    : %.4f dB\n',...
+    lengthSensitivity);
+
+fprintf('\nMost Sensitive Parameter : %s\n',...
+    mostSensitiveParameter);
+
+%% ========================================================================
+% 41. FINAL ROBUSTNESS SCORE
+% ========================================================================
+
+fprintf('\n');
+fprintf('=====================================================================\n');
+fprintf('                    FINAL ROBUSTNESS SCORE\n');
+fprintf('=====================================================================\n');
+
+fprintf('\nRobustness Score      : %.2f / 100\n',...
+    robustnessScore);
+
+fprintf('Reliability Level     : %s\n',...
+    reliabilityLevel);
+
+%% ========================================================================
+% 42. FINAL DESIGN STATUS
+% ========================================================================
+
+finalS11Pass = minS11 <= -10;
+
+finalVSWRPass = resonantVSWR <= 2;
+
+finalYieldPass = manufacturingYield >= 80;
+
+finalPhysicalPass = physicalPass;
+
+passedCriteria = ...
+    sum([...
+    finalS11Pass,...
+    finalVSWRPass,...
+    finalYieldPass,...
+    finalPhysicalPass...
+    ]);
+
+totalCriteria = 4;
+
+finalReliability = ...
+    (passedCriteria/totalCriteria)*100;
+
+fprintf('\n');
+fprintf('=====================================================================\n');
+fprintf('                    FINAL DESIGN STATUS\n');
+fprintf('=====================================================================\n');
+
+fprintf('\nS11 Requirement       : %s\n',...
+    passFail(finalS11Pass));
+
+fprintf('VSWR Requirement      : %s\n',...
+    passFail(finalVSWRPass));
+
+fprintf('Manufacturing Yield   : %s\n',...
+    passFail(finalYieldPass));
+
+fprintf('Physical Validation   : %s\n',...
+    passFail(finalPhysicalPass));
+
+fprintf('\nCriteria Passed       : %d / %d\n',...
+    passedCriteria,...
+    totalCriteria);
+
+fprintf('Final Reliability     : %.1f %%\n',...
+    finalReliability);
+
+%% Final classification
+
+if finalReliability == 100 && robustnessScore >= 90
+
+    finalStatus = 'EXCELLENT DESIGN';
+
+elseif finalReliability >= 75
+
+    finalStatus = 'RELIABLE DESIGN';
+
+elseif finalReliability >= 50
+
+    finalStatus = 'ACCEPTABLE DESIGN';
+
+else
+
+    finalStatus = 'DESIGN NEEDS OPTIMIZATION';
+
+end
+
+fprintf('\nFINAL STATUS : %s\n',...
+    finalStatus);
+
+%% ========================================================================
+% 43. EXECUTION TIME
+% ========================================================================
+
+totalExecutionTime = toc(simulationTimer);
+
+fprintf('\n');
+fprintf('=====================================================================\n');
+
+fprintf('Total Execution Time : %.2f seconds\n',...
+    totalExecutionTime);
+
+fprintf('Simulation Completed Successfully.\n');
+
+fprintf('=====================================================================\n');
+
+%% ========================================================================
+% LOCAL FUNCTION
+% ========================================================================
+
+function result = passFail(condition)
+
+    if condition
+
+        result = 'PASS';
+
+    else
+
+        result = 'FAIL';
+
+    end
+
+end
