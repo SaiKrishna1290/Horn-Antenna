@@ -1,4 +1,3 @@
-%% ========================================================================
 %  RECTANGULAR HORN ANTENNA
 %  DESIGN, ANALYSIS AND MONTE-CARLO ROBUSTNESS EVALUATION
 %
@@ -25,9 +24,7 @@
 % 18. Worst-Case Design
 % 19. Sensitivity Analysis
 % 20. Final Reliability Report
-%
-%  Author : Sai Krishna
-% ========================================================================
+
 
 clc;
 clear;
